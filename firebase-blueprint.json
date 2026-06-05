@@ -1,0 +1,156 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and metadata",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "A person in the CRM",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "addressId": { "type": "string" },
+        "typeId": { "type": "string" },
+        "phones": { "type": "array", "items": { "type": "string" } },
+        "emails": { "type": "array", "items": { "type": "string" } },
+        "pets": { "type": "array", "items": { "$ref": "#/entities/Pet" } },
+        "children": { "type": "array", "items": { "$ref": "#/entities/ContactChild" } },
+        "socialLinks": { "$ref": "#/entities/SocialLinks" },
+        "hobbies": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" },
+        "isFavorite": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "interactions": { "type": "array", "items": { "$ref": "#/entities/Interaction" } },
+        "lastInteractionDate": { "type": "string" },
+        "interactionIntervalDays": { "type": "number" }
+      },
+      "required": ["id", "firstName", "addressId", "typeId", "createdAt", "updatedAt"]
+    },
+    "Address": {
+      "title": "Address",
+      "description": "Physical address linked to one or more contacts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "street": { "type": "string" },
+        "houseNumber": { "type": "string" },
+        "postalCode": { "type": "string" },
+        "city": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "country": { "type": "string" },
+        "mapAvatarId": { "type": "string" }
+      },
+      "required": ["id", "street", "houseNumber", "city", "lat", "lng"]
+    },
+    "Relation": {
+      "title": "Relation",
+      "description": "Connection between two contacts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "contactAId": { "type": "string" },
+        "contactBId": { "type": "string" },
+        "type": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "contactAId", "contactBId", "type", "createdAt"]
+    },
+    "ContactType": {
+      "title": "ContactType",
+      "description": "Custom categories for contacts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "color": { "type": "string" }
+      },
+      "required": ["id", "name", "color"]
+    },
+    "Pet": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "ContactChild": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "birthDate": { "type": "string" }
+      }
+    },
+    "SocialLinks": {
+      "type": "object",
+      "properties": {
+        "facebook": { "type": "string" },
+        "instagram": { "type": "string" },
+        "linkedin": { "type": "string" }
+      }
+    },
+    "Interaction": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "date": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "Event": {
+      "title": "Event",
+      "description": "An event attended by multiple contacts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "type": { "type": "string" },
+        "notes": { "type": "string" },
+        "contactIds": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "date", "contactIds", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Main user document"
+    },
+    "/users/{userId}/contacts/{contactId}": {
+      "schema": "Contact",
+      "description": "Contacts belonging to the user"
+    },
+    "/users/{userId}/addresses/{addressId}": {
+      "schema": "Address",
+      "description": "Addresses belonging to the user"
+    },
+    "/users/{userId}/relations/{relationId}": {
+      "schema": "Relation",
+      "description": "Relations between user's contacts"
+    },
+    "/users/{userId}/types/{typeId}": {
+      "schema": "ContactType",
+      "description": "Custom contact types for the user"
+    },
+    "/users/{userId}/events/{eventId}": {
+      "schema": "Event",
+      "description": "Multi-contact events for the user"
+    }
+  }
+}

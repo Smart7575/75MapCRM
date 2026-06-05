@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Global Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['email', 'lastLogin']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['lastLogin'])
+      );
+
+      function isValidUser(data) {
+        return data.keys().hasAll(['email', 'createdAt']) &&
+               data.email is string && data.email.size() <= 200 &&
+               data.createdAt is string;
+      }
+
+      // Contacts Subcollection
+      match /contacts/{contactId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && isValidId(contactId);
+        allow create: if isOwner(userId) && isValidContact(incoming()) && isValidId(contactId);
+        allow update: if isOwner(userId) && isValidContact(incoming()) && (
+          incoming().diff(existing()).affectedKeys().hasAny(['firstName', 'lastName', 'photoUrl', 'birthDate', 'addressId', 'typeId', 'phones', 'emails', 'pets', 'children', 'socialLinks', 'hobbies', 'notes', 'isFavorite', 'updatedAt', 'interactions', 'lastInteractionDate', 'interactionIntervalDays'])
+        );
+        allow delete: if isOwner(userId);
+
+        function isValidContact(data) {
+          return data.firstName is string && data.firstName.size() <= 100 &&
+                 (data.lastName == null || (data.lastName is string && data.lastName.size() <= 100)) &&
+                 data.addressId is string && data.typeId is string &&
+                 data.createdAt is string && data.updatedAt is string;
+        }
+      }
+
+      // Addresses Subcollection
+      match /addresses/{addressId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && isValidId(addressId);
+        allow create: if isOwner(userId) && isValidAddress(incoming()) && isValidId(addressId);
+        allow update: if isOwner(userId) && isValidAddress(incoming());
+        allow delete: if isOwner(userId);
+
+        function isValidAddress(data) {
+          return data.street is string && data.street.size() <= 200 &&
+                 data.houseNumber is string && data.houseNumber.size() <= 20 &&
+                 data.city is string && data.city.size() <= 100 &&
+                 data.lat is number && data.lng is number;
+        }
+      }
+
+      // Relations Subcollection
+      match /relations/{relationId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && isValidId(relationId);
+        allow create: if isOwner(userId) && isValidRelation(incoming()) && isValidId(relationId);
+        allow update: if isOwner(userId) && isValidRelation(incoming());
+        allow delete: if isOwner(userId);
+
+        function isValidRelation(data) {
+          return data.contactAId is string && data.contactBId is string &&
+                 data.type is string && data.createdAt is string;
+        }
+      }
+
+      // Types Subcollection
+      match /types/{typeId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && isValidId(typeId);
+        allow create: if isOwner(userId) && isValidType(incoming()) && isValidId(typeId);
+        allow update: if isOwner(userId) && isValidType(incoming());
+        allow delete: if isOwner(userId);
+
+        function isValidType(data) {
+          return data.name is string && data.name.size() <= 100 &&
+                 data.color is string && data.color.size() <= 20;
+        }
+      }
+
+      // Events Subcollection
+      match /events/{eventId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && isValidId(eventId);
+        allow create: if isOwner(userId) && isValidEvent(incoming()) && isValidId(eventId);
+        allow update: if isOwner(userId) && isValidEvent(incoming());
+        allow delete: if isOwner(userId);
+
+        function isValidEvent(data) {
+          return data.title is string && data.title.size() <= 200 &&
+                 data.date is string &&
+                 data.contactIds is list &&
+                 data.createdAt is string;
+        }
+      }
+    }
+  }
+}
