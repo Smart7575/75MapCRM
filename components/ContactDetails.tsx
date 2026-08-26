@@ -129,6 +129,27 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
         <div className="px-6 mt-4">
           <h2 className="text-2xl font-bold">{contact.firstName} {contact.lastName}</h2>
           <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: type.color }}>{t(type.name)}</span>
+          
+          {/* Social Links */}
+          {contact.socialLinks && (contact.socialLinks.facebook || contact.socialLinks.instagram || contact.socialLinks.linkedin) && (
+            <div className="flex gap-2.5 mt-3">
+              {contact.socialLinks.facebook && (
+                <a href={contact.socialLinks.facebook.startsWith('http') ? contact.socialLinks.facebook : `https://${contact.socialLinks.facebook}`} target="_blank" rel="noopener noreferrer" className={`p-1.5 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-blue-400 hover:bg-slate-700' : 'bg-gray-100 text-blue-600 hover:bg-gray-200'}`} title="Facebook">
+                  <Facebook size={14} />
+                </a>
+              )}
+              {contact.socialLinks.instagram && (
+                <a href={contact.socialLinks.instagram.startsWith('http') ? contact.socialLinks.instagram : `https://${contact.socialLinks.instagram}`} target="_blank" rel="noopener noreferrer" className={`p-1.5 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-pink-400 hover:bg-slate-700' : 'bg-gray-100 text-pink-600 hover:bg-gray-200'}`} title="Instagram">
+                  <Instagram size={14} />
+                </a>
+              )}
+              {contact.socialLinks.linkedin && (
+                <a href={contact.socialLinks.linkedin.startsWith('http') ? contact.socialLinks.linkedin : `https://${contact.socialLinks.linkedin}`} target="_blank" rel="noopener noreferrer" className={`p-1.5 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-blue-400 hover:bg-slate-700' : 'bg-gray-100 text-blue-700 hover:bg-gray-200'}`} title="LinkedIn">
+                  <Linkedin size={14} />
+                </a>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -137,6 +158,11 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
           <div>
             <p className="text-[10px] font-black text-blue-500 uppercase mb-1">{t('lastSpoken')}</p>
             <p className={`text-sm font-bold ${isDark ? 'text-blue-300' : 'text-blue-900'}`}>{getTimeSinceLastContact(contact.lastInteractionDate)}</p>
+            {contact.interactionIntervalDays ? (
+              <p className={`text-[10px] font-semibold mt-1.5 ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
+                {t('desiredFrequency')}: {contact.interactionIntervalDays} dagen
+              </p>
+            ) : null}
           </div>
           <button onClick={() => setShowInteractionModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors">{t('recordNow')}</button>
         </div>
@@ -144,14 +170,37 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
         <div className="space-y-4">
           <DetailItem icon={<Phone size={18} />} label={t('phone')} value={contact.phones[0] || t('never')} isDark={isDark} />
           <DetailItem icon={<Mail size={18} />} label={t('email')} value={contact.emails[0] || t('never')} isDark={isDark} />
-          <DetailItem icon={<MapPin size={18} />} label={t('address')} value={`${address.street} ${address.houseNumber}`} isDark={isDark} />
+          <DetailItem 
+            icon={<MapPin size={18} />} 
+            label={t('address')} 
+            value={
+              <div className="flex flex-col">
+                <span>{address.street} {address.houseNumber}</span>
+                {(address.postalCode || address.city) && (
+                  <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-gray-500'} font-normal mt-0.5`}>
+                    {address.postalCode} {address.city}
+                  </span>
+                )}
+              </div>
+            } 
+            isDark={isDark} 
+          />
           <DetailItem icon={<Calendar size={18} />} label={t('birthday')} value={contact.birthDate || t('notSet')} isDark={isDark} />
         </div>
 
         {contact.children.length > 0 && (
           <div>
             <h3 className="text-sm font-bold text-gray-500 uppercase mb-4">{t('children')}</h3>
-            {contact.children.map((c, i) => <div key={i} className={`text-sm font-bold p-2 rounded-xl mb-1 ${isDark ? 'bg-pink-900/20 text-pink-300' : 'bg-pink-50 text-pink-800'}`}>{c.name}</div>)}
+            {contact.children.map((c, i) => (
+              <div key={i} className={`text-sm font-bold p-3 rounded-xl mb-1 flex justify-between items-center ${isDark ? 'bg-pink-900/20 text-pink-300' : 'bg-pink-50 text-pink-800'}`}>
+                <span>{c.name}</span>
+                {c.birthDate && (
+                  <span className={`text-[10px] font-normal opacity-85 flex items-center gap-1 ${isDark ? 'text-pink-400' : 'text-pink-700'}`}>
+                    <Calendar size={11} /> {c.birthDate}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
@@ -178,7 +227,20 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
         <div className="grid grid-cols-2 gap-4">
           <div className={`${isDark ? 'bg-blue-900/10' : 'bg-blue-50'} p-4 rounded-xl`}>
             <h4 className="text-xs font-bold text-blue-500 uppercase mb-2">{t('pets')}</h4>
-            <div className="text-xs font-semibold">{contact.pets.length > 0 ? contact.pets.map(p => p.name).join(', ') : t('never')}</div>
+            <div className="text-xs font-semibold">
+              {contact.pets.length > 0 ? (
+                <div className="space-y-1">
+                  {contact.pets.map((p, idx) => (
+                    <div key={idx} className="flex items-center gap-1">
+                      <span>{p.name}</span>
+                      <span className="text-[10px] font-normal opacity-75">({p.type})</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                t('never')
+              )}
+            </div>
           </div>
           <div className={`${isDark ? 'bg-purple-900/10' : 'bg-purple-50'} p-4 rounded-xl`}>
             <h4 className="text-xs font-bold text-purple-500 uppercase mb-2">{t('hobbies')}</h4>
@@ -240,7 +302,7 @@ const DetailItem = ({ icon, label, value, isDark }: any) => (
     <div className={`p-2 rounded-xl text-gray-500 ${isDark ? 'bg-slate-800' : 'bg-gray-50'}`}>{icon}</div>
     <div>
       <p className="text-[10px] font-bold text-gray-500 uppercase">{label}</p>
-      <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-gray-800'}`}>{value}</p>
+      <div className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-gray-800'}`}>{value}</div>
     </div>
   </div>
 );

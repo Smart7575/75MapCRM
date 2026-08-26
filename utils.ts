@@ -71,3 +71,28 @@ export async function compressImageBase64(
     img.src = base64Str;
   });
 }
+
+/**
+ * Recursively removes any keys with `undefined` values from an object.
+ * This is crucial for Firestore writes as Firestore does not accept `undefined`.
+ */
+export function removeUndefinedFields<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => removeUndefinedFields(item)) as unknown as T;
+  }
+
+  const newObj = {} as any;
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const val = obj[key];
+      if (val !== undefined) {
+        newObj[key] = removeUndefinedFields(val);
+      }
+    }
+  }
+  return newObj as T;
+}

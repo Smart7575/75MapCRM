@@ -55,7 +55,7 @@ import ContactDetails from './components/ContactDetails.tsx';
 import CalendarView from './components/CalendarView.tsx';
 import AuthScreen from './components/AuthScreen.tsx';
 import PlanningView from './components/PlanningView.tsx';
-import { compressImageBase64 } from './utils.ts';
+import { compressImageBase64, removeUndefinedFields } from './utils.ts';
 
 const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -232,7 +232,7 @@ const App: React.FC = () => {
     setContacts(prev => prev.map(c => c.id === updatedContact.id ? updatedContact : c));
     try {
       const userRef = doc(db, 'users', currentUser.uid);
-      await setDoc(doc(userRef, 'contacts', updatedContact.id), updatedContact);
+      await setDoc(doc(userRef, 'contacts', updatedContact.id), removeUndefinedFields(updatedContact));
     } catch (err) {
       console.error("Firestore update failed", err);
       handleFirestoreError(err, 'update', `users/${currentUser.uid}/contacts/${updatedContact.id}`);
@@ -265,7 +265,7 @@ const App: React.FC = () => {
       const userRef = doc(db, 'users', currentUser.uid);
       const addr = addresses.find(a => a.id === addressId);
       if (addr) {
-        await setDoc(doc(userRef, 'addresses', addressId), { ...addr, mapAvatarId: contactId });
+        await setDoc(doc(userRef, 'addresses', addressId), removeUndefinedFields({ ...addr, mapAvatarId: contactId }));
       }
     } catch (err) {
       console.error("Avatar update failed", err);
@@ -298,10 +298,19 @@ const App: React.FC = () => {
     try {
       const userRef = doc(db, 'users', currentUser.uid);
       const batch = writeBatch(db);
-      batch.set(doc(userRef, 'addresses', address.id), address);
-      batch.set(doc(userRef, 'contacts', contact.id), contact);
+      batch.set(doc(userRef, 'addresses', address.id), removeUndefinedFields(address));
+      batch.set(doc(userRef, 'contacts', contact.id), removeUndefinedFields(contact));
+      
+      // Delete relationships that were removed locally
+      const oldContactRelations = relations.filter(r => r.contactAId === contact.id || r.contactBId === contact.id);
+      const contactRelationsIds = new Set(contactRelations.map(r => r.id));
+      const relationsToDelete = oldContactRelations.filter(r => !contactRelationsIds.has(r.id));
+      for (const rel of relationsToDelete) {
+        batch.delete(doc(userRef, 'relations', rel.id));
+      }
+
       for (const rel of contactRelations) {
-        batch.set(doc(userRef, 'relations', rel.id), rel);
+        batch.set(doc(userRef, 'relations', rel.id), removeUndefinedFields(rel));
       }
       await batch.commit();
     } catch (err) {
@@ -377,13 +386,13 @@ const App: React.FC = () => {
       const batch = writeBatch(db);
       
       // Save event
-      batch.set(doc(userRef, 'events', event.id), event);
+      batch.set(doc(userRef, 'events', event.id), removeUndefinedFields(event));
       
       // Update contacts affected by this event
       allRelevantIds.forEach(cId => {
         const contact = updatedContacts.find(c => c.id === cId);
         if (contact) {
-          batch.set(doc(userRef, 'contacts', cId), contact);
+          batch.set(doc(userRef, 'contacts', cId), removeUndefinedFields(contact));
         }
       });
 
@@ -430,7 +439,7 @@ const App: React.FC = () => {
       event.contactIds.forEach(cId => {
         const contact = updatedContacts.find(c => c.id === cId);
         if (contact) {
-          batch.set(doc(userRef, 'contacts', cId), contact);
+          batch.set(doc(userRef, 'contacts', cId), removeUndefinedFields(contact));
         }
       });
 
