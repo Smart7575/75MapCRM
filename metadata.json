@@ -1,8 +1,10 @@
 {
-  "name": "75MapCRM75 Relation Management 4.0",
+  "name": "75MapCRM",
   "description": "A visual CRM for managing personal and business relationships with a focus on geography and milestones.",
   "requestFramePermissions": [
     "geolocation"
   ],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

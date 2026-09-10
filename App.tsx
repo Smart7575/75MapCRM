@@ -13,8 +13,6 @@ import {
   LogOut,
   ChevronRight,
   ChevronLeft,
-  Download,
-  Upload,
   AlertTriangle,
   CheckCircle2,
   X,
@@ -26,7 +24,9 @@ import {
   Activity,
   Globe,
   Sun,
-  Moon
+  Moon,
+  Settings,
+  Phone
 } from 'lucide-react';
 import { 
   auth, 
@@ -35,6 +35,7 @@ import {
   signOut, 
   collection, 
   doc, 
+  getDoc,
   getDocs, 
   setDoc, 
   deleteDoc, 
@@ -55,7 +56,8 @@ import ContactDetails from './components/ContactDetails.tsx';
 import CalendarView from './components/CalendarView.tsx';
 import AuthScreen from './components/AuthScreen.tsx';
 import PlanningView from './components/PlanningView.tsx';
-import { compressImageBase64, removeUndefinedFields } from './utils.ts';
+import { SettingsView } from './components/SettingsView.tsx';
+import { compressImageBase64, removeUndefinedFields, dialPhoneNumber } from './utils.ts';
 
 const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,7 +65,22 @@ const App: React.FC = () => {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isDataSyncing, setIsDataSyncing] = useState(false);
   const [hasPermissionError, setHasPermissionError] = useState(false);
-  const [language, setLanguage] = useState<'nl' | 'en'>('nl');
+  const [language, setLanguage] = useState<'nl' | 'en'>(() => {
+    const saved = localStorage.getItem('mapcrm_language');
+    if (saved === 'nl' || saved === 'en') {
+      return saved;
+    }
+    return 'en'; // Default to English the first time the app runs
+  });
+
+  const handleLanguageChange = (newLang: 'nl' | 'en') => {
+    setLanguage(newLang);
+    localStorage.setItem('mapcrm_language', newLang);
+    if (currentUser) {
+      const userRef = doc(db, 'users', currentUser.uid);
+      setDoc(userRef, { language: newLang }, { merge: true }).catch(() => {});
+    }
+  };
   
   // Theme state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -97,10 +114,18 @@ const App: React.FC = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importSuccess, setImportSuccess] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [callToast, setCallToast] = useState<{ name: string } | null>(null);
+  const lastCallTimeRef = useRef<{ [contactId: string]: number }>({});
+
+  // Language persistence effect
+  useEffect(() => {
+    localStorage.setItem('mapcrm_language', language);
+  }, [language]);
 
   // Theme effect
   useEffect(() => {
     localStorage.setItem('mapcrm_theme', theme);
+    document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
   // Authentication observer
@@ -128,6 +153,24 @@ const App: React.FC = () => {
       setHasPermissionError(false);
       try {
         const userRef = doc(db, 'users', currentUser.uid);
+        
+        // Optionally sync language from user document if stored in profile
+        try {
+          const userDocSnap = await getDoc(userRef);
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            if (userData?.language && (userData.language === 'nl' || userData.language === 'en')) {
+              const localSaved = localStorage.getItem('mapcrm_language');
+              if (!localSaved) {
+                setLanguage(userData.language);
+                localStorage.setItem('mapcrm_language', userData.language);
+              }
+            }
+          }
+        } catch {
+          // Non-critical profile sync
+        }
+
         const contactsSnap = await getDocs(collection(userRef, 'contacts')).catch(e => handleFirestoreError(e, 'list', `users/${currentUser.uid}/contacts`));
         const addressesSnap = await getDocs(collection(userRef, 'addresses')).catch(e => handleFirestoreError(e, 'list', `users/${currentUser.uid}/addresses`));
         const relationsSnap = await getDocs(collection(userRef, 'relations')).catch(e => handleFirestoreError(e, 'list', `users/${currentUser.uid}/relations`));
@@ -172,7 +215,10 @@ const App: React.FC = () => {
         
       } catch (err: any) {
         console.error("Error fetching Firestore data:", err);
-        if (err.code === 'permission-denied') {
+        if (
+          err.code === 'permission-denied' || 
+          (err.message && (err.message.includes('permission-denied') || err.message.includes('Permission denied')))
+        ) {
           setHasPermissionError(true);
         }
       } finally {
@@ -353,7 +399,9 @@ const App: React.FC = () => {
             id: `${interactionIdPrefix}-${c.id}`,
             type: event.type,
             date: event.date,
-            notes: event.title + (event.notes ? `: ${event.notes}` : '')
+            notes: (event.notes && event.notes.trim() !== '' && event.notes.trim().toLowerCase() !== event.title.trim().toLowerCase())
+              ? `${event.title}: ${event.notes}`
+              : (event.notes || event.title)
           };
           interactions = [newInteraction, ...interactions];
           
@@ -450,6 +498,46 @@ const App: React.FC = () => {
     }
     setIsEventFormOpen(false);
     setEditEvent(null);
+  };
+
+  const handleCallContact = async (contact: Contact, phoneNumber?: string, e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    const phoneToDial = phoneNumber || (contact.phones && contact.phones[0]);
+    if (!phoneToDial) return;
+
+    // Launch native phone dialer
+    dialPhoneNumber(phoneToDial, e);
+
+    // Prevent duplicate recording if clicked multiple times within 3 seconds
+    const now = Date.now();
+    const lastCalled = lastCallTimeRef.current[contact.id] || 0;
+    if (now - lastCalled < 3000) {
+      return;
+    }
+    lastCallTimeRef.current[contact.id] = now;
+
+    // Register phone call event on that day with description 'telefoongesprek'
+    const todayIso = new Date().toISOString();
+    const eventId = `event-call-${now}`;
+    const callEvent: Event = {
+      id: eventId,
+      title: 'telefoongesprek',
+      date: todayIso,
+      type: 'phone',
+      notes: 'telefoongesprek',
+      contactIds: [contact.id],
+      createdAt: todayIso
+    };
+
+    const contactName = `${contact.firstName} ${contact.lastName || ''}`.trim();
+    setCallToast({ name: contactName });
+    setTimeout(() => {
+      setCallToast(null);
+    }, 4000);
+
+    await saveEvent(callEvent);
   };
 
   const handleExportData = () => {
@@ -565,21 +653,31 @@ const App: React.FC = () => {
   }
 
   if (!currentUser) {
-    return <AuthScreen language={language} onLanguageChange={setLanguage} />;
+    return <AuthScreen language={language} onLanguageChange={handleLanguageChange} />;
   }
 
   return (
-    <div className={`flex h-screen w-full ${theme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'} overflow-hidden`}>
+    <div className={`flex flex-col lg:flex-row h-screen h-[100dvh] w-full ${theme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'} overflow-hidden`}>
+      {/* Hidden file input for backup restoration */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleImportData} 
+        accept=".json" 
+        className="hidden" 
+      />
+
+      {/* Desktop Sidebar (visible on large landscape screens, hidden on phones & tablet portrait) */}
       <aside 
-        className={`${
+        className={`hidden lg:flex ${
           isSidebarOpen ? 'w-64' : 'w-20'
-        } ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'} border-r transition-all duration-300 flex flex-col z-50 shadow-sm`}
+        } ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'} border-r transition-all duration-300 flex-col z-50 shadow-sm shrink-0`}
       >
         <div className="p-4 flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg">
             <Users size={24} />
           </div>
-          {isSidebarOpen && <h1 className={`text-xl font-bold tracking-tight ${theme === 'dark' ? 'text-blue-400' : 'text-blue-900'}`}>MapCRM</h1>}
+          {isSidebarOpen && <h1 className={`text-xl font-bold tracking-tight ${theme === 'dark' ? 'text-blue-400' : 'text-blue-900'}`}>75MapCRM</h1>}
         </div>
 
         <nav className="flex-1 mt-6 px-2 space-y-1 overflow-y-auto">
@@ -639,35 +737,17 @@ const App: React.FC = () => {
             onClick={() => setViewMode('stats')} 
             theme={theme}
           />
+          <NavItem 
+            icon={<Settings size={20} />} 
+            label={t('settings')} 
+            active={viewMode === 'settings'} 
+            expanded={isSidebarOpen} 
+            onClick={() => setViewMode('settings')} 
+            theme={theme}
+          />
         </nav>
 
-        <div className={`px-2 pt-4 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'} flex flex-col gap-1`}>
-          <NavItem 
-            icon={<Download size={20} />} 
-            label={t('export')} 
-            active={false} 
-            expanded={isSidebarOpen} 
-            onClick={handleExportData} 
-            theme={theme}
-          />
-          <NavItem 
-            icon={<Upload size={20} />} 
-            label={t('import')} 
-            active={false} 
-            expanded={isSidebarOpen} 
-            onClick={() => fileInputRef.current?.click()} 
-            theme={theme}
-          />
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleImportData} 
-            accept=".json" 
-            className="hidden" 
-          />
-        </div>
-
-        <div className={`p-2 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'} mt-2`}>
+        <div className={`p-2 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'} mt-auto`}>
           <NavItem 
             icon={<LogOut size={20} />} 
             label={t('logout')} 
@@ -688,48 +768,48 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col relative min-0 overflow-hidden">
-        <header className={`${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'} h-16 border-b flex items-center justify-between px-6 z-40 shrink-0`}>
-          <div className="flex-1 max-xl flex items-center gap-4">
-            <div className="relative flex-1">
+      <main className="flex-1 flex flex-col relative min-w-0 min-h-0 overflow-hidden w-full">
+        <header className={`${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'} h-16 border-b flex items-center justify-between px-3 sm:px-4 lg:px-6 z-40 shrink-0 gap-2 w-full min-w-0`}>
+          <div className="flex-1 min-w-0 max-w-xl flex items-center gap-2 sm:gap-4">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input 
                 type="text" 
                 placeholder={t('search')} 
-                className={`w-full pl-10 pr-4 py-2 border-none rounded-full focus:ring-2 focus:ring-blue-500 text-sm transition-all ${theme === 'dark' ? 'bg-slate-800 text-slate-100' : 'bg-gray-100 text-black'}`}
+                className={`w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border-none rounded-full focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm transition-all ${theme === 'dark' ? 'bg-slate-800 text-slate-100 placeholder:text-slate-500' : 'bg-gray-100 text-black placeholder:text-gray-400'}`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
             {isDataSyncing && (
-              <div className="flex items-center gap-2 text-[10px] font-black text-blue-500 uppercase tracking-widest animate-pulse">
+              <div className="flex items-center gap-1 sm:gap-2 text-[10px] font-black text-blue-500 uppercase tracking-widest animate-pulse shrink-0">
                 <Loader2 size={12} className="animate-spin" />
-                {t('sync')}
+                <span className="hidden md:inline">{t('sync')}</span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-4 ml-4">
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 ml-1 sm:ml-2 shrink-0">
             {/* Theme Toggle */}
             <button 
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className={`p-2 rounded-xl border transition-all ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700' : 'bg-gray-100 border-gray-200 text-blue-600 hover:bg-gray-200'}`}
               title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
             >
-              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
             </button>
 
             {/* Language Switcher */}
-            <div className={`flex p-1 rounded-xl shadow-inner border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-gray-100 border-gray-200/50'}`}>
+            <div className={`flex p-0.5 sm:p-1 rounded-xl shadow-inner border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-gray-100 border-gray-200/50'}`}>
               <button 
-                onClick={() => setLanguage('nl')} 
-                className={`px-3 py-1 rounded-lg text-[10px] font-black tracking-tighter transition-all ${language === 'nl' ? (theme === 'dark' ? 'bg-slate-900 text-blue-400' : 'bg-white shadow-sm text-blue-600') : 'text-gray-400 hover:text-gray-600'}`}
+                onClick={() => handleLanguageChange('nl')} 
+                className={`px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] font-black tracking-tighter transition-all ${language === 'nl' ? (theme === 'dark' ? 'bg-slate-900 text-blue-400' : 'bg-white shadow-sm text-blue-600') : 'text-gray-400 hover:text-gray-600'}`}
               >
                 NL
               </button>
               <button 
-                onClick={() => setLanguage('en')} 
-                className={`px-3 py-1 rounded-lg text-[10px] font-black tracking-tighter transition-all ${language === 'en' ? (theme === 'dark' ? 'bg-slate-900 text-blue-400' : 'bg-white shadow-sm text-blue-600') : 'text-gray-400 hover:text-gray-600'}`}
+                onClick={() => handleLanguageChange('en')} 
+                className={`px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] font-black tracking-tighter transition-all ${language === 'en' ? (theme === 'dark' ? 'bg-slate-900 text-blue-400' : 'bg-white shadow-sm text-blue-600') : 'text-gray-400 hover:text-gray-600'}`}
               >
                 EN
               </button>
@@ -737,23 +817,39 @@ const App: React.FC = () => {
 
             <button 
               onClick={() => setIsEventFormOpen(true)}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-full font-bold text-sm transition-all shadow-md active:scale-95"
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 sm:px-3.5 py-2 rounded-full font-bold text-xs sm:text-sm transition-all shadow-md active:scale-95 shrink-0"
+              title={t('newEvent')}
             >
-              <Calendar size={18} />
-              <span className="hidden sm:inline">{t('newEvent')}</span>
+              <Calendar size={16} />
+              <span className="hidden xl:inline">{t('newEvent')}</span>
             </button>
 
             <button 
               onClick={() => handleAddContact()}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-bold text-sm transition-all shadow-md active:scale-95"
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-2.5 sm:px-3.5 py-2 rounded-full font-bold text-xs sm:text-sm transition-all shadow-md active:scale-95 shrink-0"
+              title={t('newContact')}
             >
-              <Plus size={18} />
+              <Plus size={16} />
               <span className="hidden sm:inline">{t('newContact')}</span>
             </button>
-            <div className={`h-8 w-px ${theme === 'dark' ? 'bg-slate-800' : 'bg-gray-200'}`} />
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ring-2 uppercase ${theme === 'dark' ? 'bg-blue-900/50 text-blue-400 ring-slate-800' : 'bg-blue-100 text-blue-700 ring-white'}`}>
+            
+            {/* Settings button - desktop only (on mobile & tablet portrait it's in bottom bar) */}
+            <button 
+              onClick={() => setViewMode('settings')}
+              className={`hidden lg:flex p-2 rounded-xl border transition-all ${viewMode === 'settings' ? (theme === 'dark' ? 'bg-blue-600 border-blue-500 text-white shadow-sm' : 'bg-blue-600 border-blue-600 text-white shadow-sm') : (theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200')}`}
+              title={t('settings')}
+            >
+              <Settings size={17} />
+            </button>
+
+            <div className={`hidden lg:block h-8 w-px ${theme === 'dark' ? 'bg-slate-800' : 'bg-gray-200'}`} />
+            <button 
+              onClick={() => setViewMode('settings')}
+              title={`${t('settings')} (${currentUser?.email})`}
+              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ring-2 uppercase transition-all hover:scale-105 active:scale-95 shrink-0 ${theme === 'dark' ? 'bg-blue-900/50 text-blue-400 ring-slate-800 hover:ring-blue-500' : 'bg-blue-100 text-blue-700 ring-white hover:ring-blue-300'}`}
+            >
               {currentUser?.email?.slice(0, 2) || 'US'}
-            </div>
+            </button>
           </div>
         </header>
 
@@ -791,6 +887,7 @@ const App: React.FC = () => {
                   onContactClick={(id) => setSelectedContactId(id)}
                   onMapClick={handleAddContact}
                   onAddResident={(addrId) => handleAddContact(undefined, addrId)}
+                  onCall={handleCallContact}
                   t={t}
                   theme={theme}
                 />
@@ -801,6 +898,7 @@ const App: React.FC = () => {
                   addresses={addresses} 
                   types={types}
                   onContactClick={(id) => setSelectedContactId(id)}
+                  onCall={handleCallContact}
                   t={t}
                   theme={theme}
                 />
@@ -825,6 +923,7 @@ const App: React.FC = () => {
                   addresses={addresses} 
                   types={types}
                   onContactClick={(id) => setSelectedContactId(id)}
+                  onCall={handleCallContact}
                   t={t}
                   theme={theme}
                 />
@@ -846,6 +945,7 @@ const App: React.FC = () => {
                   contacts={contacts} 
                   types={types} 
                   addresses={addresses}
+                  events={events}
                   t={t}
                   theme={theme}
                 />
@@ -856,14 +956,34 @@ const App: React.FC = () => {
                   contacts={contacts}
                   onContactClick={(id) => {
                     setSelectedContactId(id);
-                    setViewMode('list');
                   }}
                   onEditEvent={(event) => {
                     setEditEvent(event);
                     setIsEventFormOpen(true);
                   }}
+                  onDeleteEvent={deleteEvent}
+                  onUpdateContact={handleUpdateContact}
+                  onNewEvent={() => setIsEventFormOpen(true)}
                   t={t}
                   theme={theme}
+                />
+              )}
+              {viewMode === 'settings' && currentUser && (
+                <SettingsView 
+                  currentUser={currentUser}
+                  theme={theme}
+                  onThemeChange={setTheme}
+                  language={language}
+                  onLanguageChange={handleLanguageChange}
+                  contactsCount={contacts.length}
+                  addressesCount={addresses.length}
+                  relationsCount={relations.length}
+                  eventsCount={events.length}
+                  typesCount={types.length}
+                  onExportData={handleExportData}
+                  onImportClick={() => fileInputRef.current?.click()}
+                  onLogout={handleLogout}
+                  t={t}
                 />
               )}
 
@@ -882,6 +1002,7 @@ const App: React.FC = () => {
                   onAddResident={(addrId) => handleAddContact(undefined, addrId)}
                   onSetMapAvatar={handleSetMapAvatar}
                   onContactClick={(id) => setSelectedContactId(id)}
+                  onCall={handleCallContact}
                   t={t}
                   theme={theme}
                 />
@@ -890,6 +1011,17 @@ const App: React.FC = () => {
           )}
 
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[200] flex flex-col gap-2 pointer-events-none">
+            {callToast && (
+              <div className="animate-in slide-in-from-top-4 duration-300 pointer-events-auto">
+                <div className="bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-500">
+                  <Phone size={20} className="fill-current animate-pulse shrink-0" />
+                  <div>
+                    <p className="font-bold text-sm">{t('callRegisteredToast') || 'Telefoongesprek geregistreerd'}</p>
+                    <p className="text-xs text-emerald-100 font-medium">{callToast.name}</p>
+                  </div>
+                </div>
+              </div>
+            )}
             {importSuccess && (
               <div className="animate-in slide-in-from-top-4 duration-300 pointer-events-auto">
                 <div className="bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-500">
@@ -914,6 +1046,73 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
+
+      {/* Mobile & Tablet Portrait Bottom Navigation Bar */}
+      <nav 
+        aria-label="Navigation"
+        className={`lg:hidden shrink-0 border-t ${
+          theme === 'dark' 
+            ? 'bg-slate-900/95 border-slate-800' 
+            : 'bg-white/95 border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]'
+        } backdrop-blur-md z-40 px-1 sm:px-3 py-1 flex items-center justify-between gap-0.5 sm:gap-1 pb-[max(0.5rem,env(safe-area-inset-bottom))]`}
+      >
+        <MobileNavItem 
+          icon={<LayoutDashboard size={19} />} 
+          label={t('dashboard')} 
+          active={viewMode === 'dashboard'} 
+          onClick={() => setViewMode('dashboard')} 
+          theme={theme} 
+        />
+        <MobileNavItem 
+          icon={<MapIcon size={19} />} 
+          label={t('map')} 
+          active={viewMode === 'map'} 
+          onClick={() => setViewMode('map')} 
+          theme={theme} 
+        />
+        <MobileNavItem 
+          icon={<Users size={19} />} 
+          label={t('contacts')} 
+          active={viewMode === 'list'} 
+          onClick={() => setViewMode('list')} 
+          theme={theme} 
+        />
+        <MobileNavItem 
+          icon={<Activity size={19} />} 
+          label={t('planning')} 
+          active={viewMode === 'planning'} 
+          onClick={() => setViewMode('planning')} 
+          theme={theme} 
+        />
+        <MobileNavItem 
+          icon={<Gift size={19} />} 
+          label={t('birthdays')} 
+          active={viewMode === 'calendar'} 
+          onClick={() => setViewMode('calendar')} 
+          theme={theme} 
+        />
+        <MobileNavItem 
+          icon={<Calendar size={19} />} 
+          label={t('events')} 
+          active={viewMode === 'events'} 
+          onClick={() => setViewMode('events')} 
+          theme={theme} 
+        />
+        <MobileNavItem 
+          icon={<BarChart3 size={19} />} 
+          label={t('stats')} 
+          active={viewMode === 'stats'} 
+          onClick={() => setViewMode('stats')} 
+          theme={theme} 
+        />
+        <MobileNavItem 
+          icon={<Settings size={19} />} 
+          label={t('settings')} 
+          active={viewMode === 'settings'} 
+          onClick={() => setViewMode('settings')} 
+          theme={theme} 
+        />
+      </nav>
 
       {isFormOpen && (
         <ContactForm 
@@ -1006,6 +1205,37 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, active, expanded, onClic
     <span className={`${active ? (theme === 'dark' ? 'text-blue-400' : 'text-blue-600') : 'text-gray-400'}`}>{icon}</span>
     {expanded && <span className="font-bold text-sm truncate">{label}</span>}
     {active && expanded && <div className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${theme === 'dark' ? 'bg-blue-400' : 'bg-blue-600'}`} />}
+  </button>
+);
+
+interface MobileNavItemProps {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  theme: string;
+}
+
+const MobileNavItem: React.FC<MobileNavItemProps> = ({ icon, label, active, onClick, theme }) => (
+  <button 
+    type="button"
+    onClick={onClick}
+    className={`flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 sm:px-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 ${
+      active 
+        ? (theme === 'dark' ? 'text-blue-400 bg-blue-950/40 font-bold' : 'text-blue-600 bg-blue-50 font-bold') 
+        : (theme === 'dark' ? 'text-slate-400 hover:text-slate-200' : 'text-gray-500 hover:text-gray-900')
+    }`}
+    title={label}
+  >
+    <span className="relative flex items-center justify-center">
+      {icon}
+      {active && (
+        <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${theme === 'dark' ? 'bg-blue-400' : 'bg-blue-600'}`} />
+      )}
+    </span>
+    <span className="text-[9px] sm:text-[11px] tracking-tight truncate w-full text-center leading-tight">
+      {label}
+    </span>
   </button>
 );
 

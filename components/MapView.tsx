@@ -3,7 +3,8 @@ import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Contact, Address, ContactType } from '../types.ts';
-import { Plus, User } from 'lucide-react';
+import { Plus, User, Phone } from 'lucide-react';
+import { cleanPhoneNumber, dialPhoneNumber } from '../utils.ts';
 
 interface MapViewProps {
   contacts: Contact[];
@@ -12,6 +13,7 @@ interface MapViewProps {
   onContactClick: (id: string) => void;
   onMapClick: (coords: [number, number]) => void;
   onAddResident: (addressId: string) => void;
+  onCall?: (contact: Contact, phoneNumber?: string, e?: React.MouseEvent | React.TouchEvent) => void;
   t: (key: any) => string;
   theme?: string;
 }
@@ -30,12 +32,24 @@ const MapResizeHandler = () => {
   useEffect(() => {
     map.invalidateSize();
     const timer = setTimeout(() => map.invalidateSize(), 250);
-    return () => clearTimeout(timer);
+    
+    const handleResize = () => {
+      map.invalidateSize();
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
   }, [map]);
   return null;
 };
 
-const MapView: React.FC<MapViewProps> = ({ contacts, addresses, types, onContactClick, onMapClick, onAddResident, t, theme }) => {
+const MapView: React.FC<MapViewProps> = ({ contacts, addresses, types, onContactClick, onMapClick, onAddResident, onCall, t, theme }) => {
   const [mapCenter] = useState<[number, number]>([52.1326, 5.2913]);
   const isDark = theme === 'dark';
 
@@ -101,6 +115,26 @@ const MapView: React.FC<MapViewProps> = ({ contacts, addresses, types, onContact
                           <p className={`font-bold text-sm truncate group-hover:text-blue-500 transition-colors ${isDark ? 'text-slate-200' : 'text-gray-900'}`}>{res.firstName} {res.lastName}</p>
                           <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: typeColor }}>{t(categoryName)}</p>
                         </div>
+                        {res.phones && res.phones.length > 0 && res.phones[0] && (
+                          <a
+                            href={`tel:${cleanPhoneNumber(res.phones[0])}`}
+                            onClick={(e) => {
+                              if (onCall) {
+                                onCall(res, res.phones[0], e);
+                              } else {
+                                dialPhoneNumber(res.phones[0], e);
+                              }
+                            }}
+                            title={`${t('call')}: ${res.phones[0]}`}
+                            className={`p-1.5 rounded-lg transition-all active:scale-90 flex items-center justify-center shrink-0 ${
+                              isDark 
+                                ? 'bg-emerald-950/70 text-emerald-400 hover:bg-emerald-900 border border-emerald-800/60' 
+                                : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
+                            }`}
+                          >
+                            <Phone size={13} className="fill-current" />
+                          </a>
+                        )}
                       </div>
                     );
                   })}

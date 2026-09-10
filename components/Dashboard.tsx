@@ -41,18 +41,18 @@ const Dashboard: React.FC<DashboardProps> = ({ contacts, addresses, types, onCon
 
   return (
     <div className={`h-full w-full overflow-y-auto ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
-      <div className="p-8 max-w-7xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 lg:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 sm:pb-24">
         <div>
-          <h2 className="text-3xl font-bold mb-1">{t('welcomeBack')}</h2>
-          <p className="text-gray-500">{t('welcomeSubtitle')}</p>
+          <h2 className="text-2xl sm:text-3xl font-bold mb-1">{t('welcomeBack')}</h2>
+          <p className="text-sm text-gray-500">{t('welcomeSubtitle')}</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {stats.map((stat, i) => (
-            <div key={i} className={`${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'} p-6 rounded-3xl shadow-sm border flex items-center gap-4 group transition-shadow`}>
+            <div key={i} className={`${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'} p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-sm border flex items-center gap-4 group transition-shadow`}>
               <div className={`p-3 rounded-2xl ${stat.color} text-white shadow-inner transition-transform group-hover:scale-110`}>{stat.icon}</div>
               <div>
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{stat.label}</p>
-                <p className="text-2xl font-black">{stat.value}</p>
+                <p className="text-xl sm:text-2xl font-black">{stat.value}</p>
               </div>
             </div>
           ))}

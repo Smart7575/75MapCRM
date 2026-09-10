@@ -1,14 +1,24 @@
 
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getAuth, 
   onAuthStateChanged, 
   signOut, 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  deleteUser,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  sendPasswordResetEmail
 } from "firebase/auth";
 import { 
+  initializeFirestore,
   getFirestore, 
+  persistentLocalCache,
+  persistentMultipleTabManager,
   doc, 
   setDoc, 
   getDoc, 
@@ -18,24 +28,69 @@ import {
   writeBatch,
   query,
   where,
-  getDocFromServer
+  getDocFromServer,
+  setLogLevel
 } from "firebase/firestore";
 import firebaseConfig from './firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
+// Silence unnecessary transport/offline warnings in the browser console
+try {
+  setLogLevel('silent');
+} catch {
+  // Ignore if setLogLevel is not supported in current environment
+}
+
+// Initialize Firebase without duplicate app warnings
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
-export const db = getFirestore(app); // Standard projects use the default database
+
+// Initialize Firestore with auto-detect long-polling and multi-tab offline cache
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  }, (firebaseConfig as any).firestoreDatabaseId);
+} catch {
+  try {
+    firestoreDb = initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+    }, (firebaseConfig as any).firestoreDatabaseId);
+  } catch {
+    firestoreDb = getFirestore(app);
+  }
+}
+export const db = firestoreDb;
 
 async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return;
     }
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error: any) {
+    // Gracefully handle expected offline, network unavailable, or security rule denials
+    const msg = error instanceof Error ? error.message : String(error);
+    if (
+      msg.includes('the client is offline') || 
+      error?.code === 'unavailable' || 
+      error?.code === 'permission-denied'
+    ) {
+      // Offline mode or expected health-check response
+      return;
+    }
+    console.warn("Firestore connection check note:", msg);
   }
 }
-testConnection();
+
+// Perform non-blocking health check after initialization
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    testConnection().catch(() => {});
+  }, 1200);
+} else {
+  testConnection().catch(() => {});
+}
 
 export interface FirestoreErrorInfo {
   error: string;
@@ -87,7 +142,14 @@ export {
   onAuthStateChanged, 
   signOut, 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  deleteUser,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  sendPasswordResetEmail
 };
 
 // Re-export firestore functions

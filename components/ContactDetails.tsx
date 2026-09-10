@@ -8,6 +8,7 @@ import {
   CheckCircle2, Smartphone, UserCheck
 } from 'lucide-react';
 import { Contact, Address, ContactType, Relation, Interaction, InteractionMode } from '../types.ts';
+import { cleanPhoneNumber, dialPhoneNumber } from '../utils.ts';
 
 interface ContactDetailsProps {
   contact: Contact;
@@ -23,16 +24,18 @@ interface ContactDetailsProps {
   onAddResident: (addressId: string) => void;
   onSetMapAvatar: (addressId: string, contactId: string) => void;
   onContactClick: (id: string) => void;
+  onCall?: (contact: Contact, phoneNumber?: string, e?: React.MouseEvent | React.TouchEvent) => void;
   t: (key: any) => string;
   theme?: string;
 }
 
 const ContactDetails: React.FC<ContactDetailsProps> = ({ 
-  contact, address, type, contacts, relations, otherResidents, onClose, onEdit, onUpdate, onDelete, onAddResident, onSetMapAvatar, onContactClick, t, theme
+  contact, address, type, contacts, relations, otherResidents, onClose, onEdit, onUpdate, onDelete, onAddResident, onSetMapAvatar, onContactClick, onCall, t, theme
 }) => {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [showInteractionModal, setShowInteractionModal] = useState(false);
   const [editingInteractionId, setEditingInteractionId] = useState<string | null>(null);
+  const [deletingInteractionId, setDeletingInteractionId] = useState<string | null>(null);
   const [newInteractionType, setNewInteractionType] = useState<InteractionMode>('physical');
   const [newInteractionNotes, setNewInteractionNotes] = useState('');
   const [newInteractionDate, setNewInteractionDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -78,18 +81,78 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
     return lastDate.toLocaleDateString();
   };
 
+  const handleOpenNewInteraction = () => {
+    setEditingInteractionId(null);
+    setNewInteractionDate(new Date().toISOString().split('T')[0]);
+    setNewInteractionType('physical');
+    setNewInteractionNotes('');
+    setShowInteractionModal(true);
+  };
+
+  const handleStartEditInteraction = (log: Interaction | { id: string; type: any; date: string; notes: string }) => {
+    setEditingInteractionId(log.id);
+    const d = new Date(log.date);
+    const formatted = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    setNewInteractionDate(formatted);
+    setNewInteractionType(log.type === 'interaction' ? 'physical' : log.type);
+    setNewInteractionNotes(log.notes && log.notes !== t('nu_vastleggen') ? log.notes : '');
+    setShowInteractionModal(true);
+  };
+
+  const handleDeleteInteraction = (logId: string) => {
+    let remaining = (contact.interactions || []).filter(i => i.id !== logId);
+    if (logId === 'virtual-last' || logId === 'last-card') {
+      const sorted = [...(contact.interactions || [])].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      if (sorted.length > 0) {
+        remaining = remaining.filter(i => i.id !== sorted[0].id);
+      }
+    }
+    const sortedRemaining = [...remaining].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const latestDate = sortedRemaining[0]?.date || '';
+    onUpdate({
+      ...contact,
+      interactions: remaining,
+      lastInteractionDate: latestDate,
+      updatedAt: new Date().toISOString()
+    });
+    setDeletingInteractionId(null);
+    if (editingInteractionId === logId) {
+      setShowInteractionModal(false);
+      setEditingInteractionId(null);
+    }
+  };
+
   const handleSaveInteraction = () => {
     const selectedDateTime = new Date(newInteractionDate);
-    const isoDate = selectedDateTime.toISOString();
+    const validDate = isNaN(selectedDateTime.getTime()) ? new Date() : selectedDateTime;
+    const isoDate = validDate.toISOString();
     let updatedInteractions = [...(contact.interactions || [])];
-    if (editingInteractionId) {
-      updatedInteractions = updatedInteractions.map(i => i.id === editingInteractionId ? { ...i, type: newInteractionType, date: isoDate, notes: newInteractionNotes } : i);
+
+    if (editingInteractionId && editingInteractionId !== 'virtual-last') {
+      updatedInteractions = updatedInteractions.map(i => 
+        i.id === editingInteractionId 
+          ? { ...i, type: newInteractionType, date: isoDate, notes: newInteractionNotes || t('nu_vastleggen') } 
+          : i
+      );
     } else {
-      updatedInteractions = [{ id: `int-${Date.now()}`, type: newInteractionType, date: isoDate, notes: newInteractionNotes || t('nu_vastleggen') }, ...updatedInteractions];
+      const newEntry: Interaction = { 
+        id: `int-${Date.now()}`, 
+        type: newInteractionType, 
+        date: isoDate, 
+        notes: newInteractionNotes || t('nu_vastleggen') 
+      };
+      updatedInteractions = [newEntry, ...updatedInteractions];
     }
-    const latestInteractionDate = updatedInteractions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.date || '';
-    onUpdate({ ...contact, lastInteractionDate: latestInteractionDate, interactions: updatedInteractions, updatedAt: new Date().toISOString() });
+
+    const latestInteractionDate = [...updatedInteractions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.date || '';
+    onUpdate({ 
+      ...contact, 
+      lastInteractionDate: latestInteractionDate, 
+      interactions: updatedInteractions, 
+      updatedAt: new Date().toISOString() 
+    });
     setShowInteractionModal(false);
+    setEditingInteractionId(null);
   };
 
   const getInteractionIcon = (type_in: InteractionMode) => {
@@ -128,7 +191,14 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
         </div>
         <div className="px-6 mt-4">
           <h2 className="text-2xl font-bold">{contact.firstName} {contact.lastName}</h2>
-          <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: type.color }}>{t(type.name)}</span>
+          <div className="flex items-center gap-2 flex-wrap mt-1">
+            <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: type.color }}>{t(type.name)}</span>
+            {contact.sortName && (
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${isDark ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-gray-100 text-gray-600 border border-gray-200'}`} title={t('sortField')}>
+                {contact.sortName}
+              </span>
+            )}
+          </div>
           
           {/* Social Links */}
           {contact.socialLinks && (contact.socialLinks.facebook || contact.socialLinks.instagram || contact.socialLinks.linkedin) && (
@@ -154,22 +224,211 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
-        <div className={`${isDark ? 'bg-blue-900/20 border-blue-900/30' : 'bg-blue-50/50 border-blue-100'} p-4 rounded-2xl border flex items-center justify-between`}>
-          <div>
-            <p className="text-[10px] font-black text-blue-500 uppercase mb-1">{t('lastSpoken')}</p>
-            <p className={`text-sm font-bold ${isDark ? 'text-blue-300' : 'text-blue-900'}`}>{getTimeSinceLastContact(contact.lastInteractionDate)}</p>
-            {contact.interactionIntervalDays ? (
-              <p className={`text-[10px] font-semibold mt-1.5 ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
-                {t('desiredFrequency')}: {contact.interactionIntervalDays} dagen
+        <div className={`${isDark ? 'bg-blue-900/20 border-blue-900/30' : 'bg-blue-50/60 border-blue-100'} p-4 sm:p-5 rounded-2xl border space-y-3`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black text-blue-500 uppercase tracking-wider">
+                  {t('lastSpoken')}
+                </span>
+                {contact.lastInteractionDate && contact.lastInteractionDate.trim() !== '' && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    isDark ? 'bg-blue-950/80 text-blue-300 border border-blue-800/60' : 'bg-blue-100/80 text-blue-800'
+                  }`}>
+                    {new Date(contact.lastInteractionDate).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+
+              <p className={`text-base font-bold mt-1 ${isDark ? 'text-blue-200' : 'text-blue-950'}`}>
+                {getTimeSinceLastContact(contact.lastInteractionDate)}
               </p>
-            ) : null}
+
+              {contact.interactionIntervalDays ? (
+                <p className={`text-[10px] font-semibold mt-1 ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
+                  {t('desiredFrequency')}: {contact.interactionIntervalDays} {t('days')}
+                </p>
+              ) : null}
+            </div>
+
+            <button 
+              type="button"
+              onClick={handleOpenNewInteraction} 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 active:scale-95"
+            >
+              <Plus size={14} />
+              <span>{t('recordNow')}</span>
+            </button>
           </div>
-          <button onClick={() => setShowInteractionModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors">{t('recordNow')}</button>
+
+          {/* Contactmoment Acties: Duidelijk potlood- en wissymbool */}
+          {contact.lastInteractionDate && contact.lastInteractionDate.trim() !== '' && (
+            <div className={`pt-2.5 border-t flex items-center justify-between gap-2 flex-wrap ${
+              isDark ? 'border-blue-900/40' : 'border-blue-100'
+            }`}>
+              <span className={`text-[11px] font-medium ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>
+                {t('contactMoment')}:
+              </span>
+
+              {deletingInteractionId === 'last-card' ? (
+                <div className="flex items-center bg-red-600 text-white rounded-xl px-2.5 py-1 gap-2 text-xs font-bold animate-in fade-in zoom-in-95 duration-150 shadow-sm">
+                  <span className="text-[10px] uppercase font-black">{t('deleteContactMomentConfirm')}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const latest = displayInteractions[0];
+                      handleDeleteInteraction(latest ? latest.id : 'virtual-last');
+                    }}
+                    title={t('deleteConfirm')}
+                    className="bg-white text-red-600 p-1 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    <Check size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingInteractionId(null)}
+                    title={t('cancel')}
+                    className="text-white p-1 hover:opacity-80 transition-opacity"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const latest = displayInteractions[0] || {
+                        id: 'virtual-last',
+                        type: 'physical',
+                        date: contact.lastInteractionDate!,
+                        notes: ''
+                      };
+                      handleStartEditInteraction(latest);
+                    }}
+                    title={t('interactionEdit')}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                      isDark 
+                        ? 'bg-slate-800 border-slate-700 text-blue-400 hover:bg-slate-750 hover:text-blue-300' 
+                        : 'bg-white border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300'
+                    }`}
+                  >
+                    <Edit2 size={13} className="text-blue-500" />
+                    <span>{t('edit')}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDeletingInteractionId('last-card')}
+                    title={t('deleteInteraction')}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                      isDark 
+                        ? 'bg-slate-800 border-slate-700 text-red-400 hover:bg-slate-750 hover:text-red-300' 
+                        : 'bg-white border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300'
+                    }`}
+                  >
+                    <Trash2 size={13} className="text-red-500" />
+                    <span>{t('delete')}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
-          <DetailItem icon={<Phone size={18} />} label={t('phone')} value={contact.phones[0] || t('never')} isDark={isDark} />
-          <DetailItem icon={<Mail size={18} />} label={t('email')} value={contact.emails[0] || t('never')} isDark={isDark} />
+          <DetailItem 
+            icon={<Phone size={18} className={contact.phones?.[0] ? 'fill-current' : ''} />} 
+            label={t('phone')} 
+            value={
+              contact.phones && contact.phones.length > 0 && contact.phones[0] ? (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex flex-col">
+                    {contact.phones.map((p, idx) => (
+                      <a
+                        key={idx}
+                        href={`tel:${cleanPhoneNumber(p)}`}
+                        onClick={(e) => {
+                          if (onCall) {
+                            onCall(contact, p, e);
+                          } else {
+                            dialPhoneNumber(p, e);
+                          }
+                        }}
+                        title={`${t('call')}: ${p}`}
+                        className={`font-semibold hover:underline flex items-center gap-1.5 transition-colors ${
+                          isDark ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'
+                        }`}
+                      >
+                        <span>{p}</span>
+                      </a>
+                    ))}
+                  </div>
+                  <a
+                    href={`tel:${cleanPhoneNumber(contact.phones[0])}`}
+                    onClick={(e) => {
+                      if (onCall) {
+                        onCall(contact, contact.phones[0], e);
+                      } else {
+                        dialPhoneNumber(contact.phones[0], e);
+                      }
+                    }}
+                    title={`${t('call')}: ${contact.phones[0]}`}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer ${
+                      isDark 
+                        ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/80 hover:bg-emerald-900' 
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <Phone size={13} className="fill-current" />
+                    <span>{t('call')}</span>
+                  </a>
+                </div>
+              ) : (
+                <span className="text-gray-400 font-normal">{t('never')}</span>
+              )
+            } 
+            actionHref={contact.phones?.[0] ? `tel:${cleanPhoneNumber(contact.phones[0])}` : undefined}
+            actionTitle={contact.phones?.[0] ? `${t('call')}: ${contact.phones[0]}` : undefined}
+            actionType="phone"
+            onActionClick={(e: any) => {
+              if (onCall) {
+                onCall(contact, contact.phones[0], e);
+              } else {
+                dialPhoneNumber(contact.phones[0], e);
+              }
+            }}
+            isDark={isDark} 
+          />
+          <DetailItem 
+            icon={<Mail size={18} />} 
+            label={t('email')} 
+            value={
+              contact.emails && contact.emails.length > 0 && contact.emails[0] ? (
+                <div className="flex flex-col">
+                  {contact.emails.map((m, idx) => (
+                    <a
+                      key={idx}
+                      href={`mailto:${m}`}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`E-mail: ${m}`}
+                      className={`font-semibold hover:underline flex items-center gap-1.5 transition-colors ${
+                        isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
+                      }`}
+                    >
+                      <span>{m}</span>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-gray-400 font-normal">{t('never')}</span>
+              )
+            } 
+            actionHref={contact.emails?.[0] ? `mailto:${contact.emails[0]}` : undefined}
+            actionTitle={contact.emails?.[0] ? `E-mail: ${contact.emails[0]}` : undefined}
+            actionType="email"
+            isDark={isDark} 
+          />
           <DetailItem 
             icon={<MapPin size={18} />} 
             label={t('address')} 
@@ -254,41 +513,214 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
         </div>
 
         <div>
-          <h3 className="text-sm font-bold text-gray-500 uppercase mb-4">{t('history')}</h3>
-          {displayInteractions.map(log => (
-            <div key={log.id} className={`pl-6 border-l mb-4 relative ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
-              <div className={`absolute -left-2 top-1 border rounded-full p-0.5 ${isDark ? 'bg-slate-900 border-slate-700 text-slate-400' : 'bg-white border-gray-200 text-gray-500'}`}>{getInteractionIcon(log.type)}</div>
-              <p className="text-[10px] text-gray-500 font-bold uppercase">{new Date(log.date).toLocaleDateString()}</p>
-              <p className="text-sm">{log.notes}</p>
-            </div>
-          ))}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-gray-500 uppercase">{t('history')}</h3>
+            <button 
+              type="button"
+              onClick={handleOpenNewInteraction}
+              className="text-xs text-blue-500 hover:text-blue-600 font-bold flex items-center gap-1 transition-colors"
+            >
+              <Plus size={14} />
+              <span>{t('recordNow')}</span>
+            </button>
+          </div>
+
+          {displayInteractions.length === 0 ? (
+            <p className={`text-xs italic ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>{t('noInteractions')}</p>
+          ) : (
+            displayInteractions.map(log => {
+              const isDeleting = deletingInteractionId === log.id;
+              return (
+                <div key={log.id} className={`pl-6 border-l mb-4 relative group ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
+                  <div className={`absolute -left-2 top-1 border rounded-full p-0.5 ${isDark ? 'bg-slate-900 border-slate-700 text-slate-400' : 'bg-white border-gray-200 text-gray-500'}`}>
+                    {getInteractionIcon(log.type)}
+                  </div>
+                  
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[10px] text-gray-500 font-bold uppercase">
+                          {new Date(log.date).toLocaleDateString()}
+                        </p>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold uppercase ${
+                          isDark ? 'bg-slate-800 text-slate-400' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {t(log.type === 'phone' ? 'call' : log.type)}
+                        </span>
+                      </div>
+                      <p className="text-sm mt-0.5 whitespace-pre-wrap break-words">{log.notes}</p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isDeleting ? (
+                        <div className="flex items-center bg-red-600 text-white rounded-xl px-2.5 py-1 gap-1.5 text-xs font-bold animate-in fade-in zoom-in-95 duration-150 shadow-sm">
+                          <span className="text-[10px] font-black uppercase tracking-wider">{t('deleteConfirm')}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteInteraction(log.id)}
+                            title={t('deleteConfirm')}
+                            className="bg-white text-red-600 p-1 rounded-lg hover:bg-red-50 transition-colors"
+                          >
+                            <Check size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingInteractionId(null)}
+                            title={t('cancel')}
+                            className="text-white p-0.5 hover:opacity-80 transition-opacity"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditInteraction(log)}
+                            title={t('interactionEdit')}
+                            className={`px-2 py-1 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${
+                              isDark 
+                                ? 'bg-slate-800 border-slate-700 text-blue-400 hover:bg-slate-750 hover:text-blue-300' 
+                                : 'bg-white border-blue-200 text-blue-600 hover:bg-blue-50'
+                            }`}
+                          >
+                            <Edit2 size={13} className="text-blue-500" />
+                            <span className="text-[11px]">{t('edit')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingInteractionId(log.id)}
+                            title={t('deleteInteraction')}
+                            className={`px-2 py-1 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${
+                              isDark 
+                                ? 'bg-slate-800 border-slate-700 text-red-400 hover:bg-slate-750 hover:text-red-300' 
+                                : 'bg-white border-red-200 text-red-600 hover:bg-red-50'
+                            }`}
+                          >
+                            <Trash2 size={13} className="text-red-500" />
+                            <span className="text-[11px]">{t('delete')}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
       {showInteractionModal && (
         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
           <div className={`p-6 rounded-3xl w-full max-w-xs shadow-2xl space-y-4 border ${isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-gray-100 text-gray-900'}`}>
-            <h4 className="text-lg font-bold">{t('interactionTitle')}</h4>
-            <input 
-              type="date" 
-              value={newInteractionDate} 
-              onChange={e => setNewInteractionDate(e.target.value)} 
-              className={`w-full p-2 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-gray-50 border-gray-200 text-black'}`} 
-            />
-            <div className="grid grid-cols-3 gap-2">
-              <button onClick={() => setNewInteractionType('physical')} className={`p-2 rounded-xl border text-[10px] font-bold transition-all ${newInteractionType === 'physical' ? 'bg-blue-600 text-white' : (isDark ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-gray-50 text-gray-500')}`}>{t('physical')}</button>
-              <button onClick={() => setNewInteractionType('app')} className={`p-2 rounded-xl border text-[10px] font-bold transition-all ${newInteractionType === 'app' ? 'bg-blue-600 text-white' : (isDark ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-gray-50 text-gray-500')}`}>{t('app')}</button>
-              <button onClick={() => setNewInteractionType('phone')} className={`p-2 rounded-xl border text-[10px] font-bold transition-all ${newInteractionType === 'phone' ? 'bg-blue-600 text-white' : (isDark ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-gray-50 text-gray-500')}`}>{t('call')}</button>
+            <div className="flex items-center justify-between">
+              <h4 className="text-lg font-bold">{editingInteractionId ? t('interactionEdit') : t('interactionTitle')}</h4>
+              <button 
+                type="button"
+                onClick={() => {
+                  setShowInteractionModal(false);
+                  setEditingInteractionId(null);
+                }} 
+                className={`p-1 rounded-full transition-colors ${isDark ? 'text-slate-400 hover:text-slate-200' : 'text-gray-400 hover:text-gray-600'}`}
+              >
+                <X size={18} />
+              </button>
             </div>
-            <textarea 
-              value={newInteractionNotes} 
-              onChange={e => setNewInteractionNotes(e.target.value)} 
-              className={`w-full p-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-gray-50 border-gray-200 text-black'}`} 
-              placeholder={t('recordNow')} 
-            />
-            <div className="flex flex-col gap-2">
-              <button onClick={handleSaveInteraction} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all">{t('save')}</button>
-              <button onClick={() => setShowInteractionModal(false)} className="w-full text-gray-400 hover:text-gray-300 font-bold text-sm transition-colors">{t('cancel')}</button>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-gray-400">{t('date')}</label>
+              <input 
+                type="date" 
+                value={newInteractionDate} 
+                onChange={e => setNewInteractionDate(e.target.value)} 
+                className={`w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-gray-50 border-gray-200 text-black'}`} 
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-gray-400">{t('planningInteraction') || 'Type'}</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setNewInteractionType('physical')} 
+                  className={`p-2 rounded-xl border text-[10px] font-bold transition-all flex flex-col items-center gap-1 ${
+                    newInteractionType === 'physical' 
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                      : (isDark ? 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100')
+                  }`}
+                >
+                  <Users size={14} />
+                  <span>{t('physical')}</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setNewInteractionType('app')} 
+                  className={`p-2 rounded-xl border text-[10px] font-bold transition-all flex flex-col items-center gap-1 ${
+                    newInteractionType === 'app' 
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                      : (isDark ? 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100')
+                  }`}
+                >
+                  <Smartphone size={14} />
+                  <span>{t('app')}</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setNewInteractionType('phone')} 
+                  className={`p-2 rounded-xl border text-[10px] font-bold transition-all flex flex-col items-center gap-1 ${
+                    newInteractionType === 'phone' 
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                      : (isDark ? 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100')
+                  }`}
+                >
+                  <Phone size={14} />
+                  <span>{t('call')}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-gray-400">{t('notes')}</label>
+              <textarea 
+                value={newInteractionNotes} 
+                onChange={e => setNewInteractionNotes(e.target.value)} 
+                className={`w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-gray-50 border-gray-200 text-black'}`} 
+                placeholder={t('recordNow')}
+                rows={3} 
+              />
+            </div>
+
+            <div className="flex flex-col gap-2 pt-1">
+              <button 
+                type="button"
+                onClick={handleSaveInteraction} 
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+              >
+                {t('save')}
+              </button>
+
+              {editingInteractionId && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteInteraction(editingInteractionId)}
+                  className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 size={14} />
+                  <span>{t('deleteInteraction')}</span>
+                </button>
+              )}
+
+              <button 
+                type="button"
+                onClick={() => {
+                  setShowInteractionModal(false);
+                  setEditingInteractionId(null);
+                }} 
+                className="w-full text-gray-400 hover:text-gray-300 font-bold text-sm py-1 transition-colors"
+              >
+                {t('cancel')}
+              </button>
             </div>
           </div>
         </div>
@@ -297,14 +729,49 @@ const ContactDetails: React.FC<ContactDetailsProps> = ({
   );
 };
 
-const DetailItem = ({ icon, label, value, isDark }: any) => (
-  <div className="flex items-start gap-3">
-    <div className={`p-2 rounded-xl text-gray-500 ${isDark ? 'bg-slate-800' : 'bg-gray-50'}`}>{icon}</div>
-    <div>
-      <p className="text-[10px] font-bold text-gray-500 uppercase">{label}</p>
-      <div className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-gray-800'}`}>{value}</div>
+const DetailItem = ({ icon, label, value, isDark, actionHref, actionTitle, actionType, onActionClick }: any) => {
+  const isPhone = actionType === 'phone' && actionHref;
+  const isEmail = actionType === 'email' && actionHref;
+
+  return (
+    <div className="flex items-start gap-3">
+      {actionHref ? (
+        <a 
+          href={actionHref}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onActionClick) {
+              onActionClick(e);
+            } else if (isPhone) {
+              window.location.href = actionHref;
+            }
+          }}
+          title={actionTitle}
+          className={`p-2.5 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer shrink-0 flex items-center justify-center ${
+            isPhone
+              ? (isDark 
+                  ? 'bg-emerald-950/80 text-emerald-400 hover:bg-emerald-900 border border-emerald-800/70 hover:border-emerald-600' 
+                  : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300')
+              : isEmail
+              ? (isDark 
+                  ? 'bg-blue-950/80 text-blue-400 hover:bg-blue-900 border border-blue-800/70' 
+                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200')
+              : (isDark ? 'bg-slate-800 text-gray-400 hover:bg-slate-700' : 'bg-gray-50 text-gray-500 hover:bg-gray-100')
+          }`}
+        >
+          {icon}
+        </a>
+      ) : (
+        <div className={`p-2.5 rounded-xl text-gray-500 shrink-0 ${isDark ? 'bg-slate-800' : 'bg-gray-50'}`}>
+          {icon}
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] font-bold text-gray-500 uppercase">{label}</p>
+        <div className={`text-sm font-semibold mt-0.5 ${isDark ? 'text-slate-200' : 'text-gray-800'}`}>{value}</div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default ContactDetails;

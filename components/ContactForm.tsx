@@ -8,7 +8,7 @@ import {
   Facebook, Instagram, Linkedin, Clock, Smartphone, UserCheck, MessageSquare, Activity
 } from 'lucide-react';
 import { Contact, Address, ContactType, Pet, Relation, RelationType, ContactChild, SocialLinks, InteractionMode, Interaction } from '../types.ts';
-import { compressImageBase64 } from '../utils.ts';
+import { compressImageBase64, computeDefaultSortName } from '../utils.ts';
 
 interface ContactFormProps {
   contact: Contact | null;
@@ -39,12 +39,56 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const isDark = theme === 'dark';
 
   const [formData, setFormData] = useState<Partial<Contact>>(() => {
-    return contact || {
-      firstName: '', lastName: '', phones: [''], emails: [''], typeId: types[0].id,
+    if (contact) {
+      return {
+        ...contact,
+        sortName: contact.sortName !== undefined ? contact.sortName : computeDefaultSortName(contact.firstName, contact.lastName)
+      };
+    }
+    return {
+      firstName: '', lastName: '', sortName: '', phones: [''], emails: [''], typeId: types[0].id,
       notes: '', isFavorite: false, pets: [], children: [], socialLinks: {},
       hobbies: [], photoUrl: '', lastInteractionDate: '', interactions: [], interactionIntervalDays: 0
     };
   });
+
+  const [isCustomSortName, setIsCustomSortName] = useState<boolean>(() => {
+    if (!contact?.sortName) return false;
+    const defaultSort = computeDefaultSortName(contact.firstName, contact.lastName);
+    return contact.sortName.trim() !== defaultSort.trim();
+  });
+
+  const handleFirstNameChange = (val: string) => {
+    setFormData(prev => {
+      const next = { ...prev, firstName: val };
+      if (!isCustomSortName) {
+        next.sortName = computeDefaultSortName(val, prev.lastName);
+      }
+      return next;
+    });
+  };
+
+  const handleLastNameChange = (val: string) => {
+    setFormData(prev => {
+      const next = { ...prev, lastName: val };
+      if (!isCustomSortName) {
+        next.sortName = computeDefaultSortName(prev.firstName, val);
+      }
+      return next;
+    });
+  };
+
+  const handleSortNameChange = (val: string) => {
+    const defaultSort = computeDefaultSortName(formData.firstName, formData.lastName);
+    setIsCustomSortName(val.trim() !== defaultSort.trim());
+    setFormData(prev => ({ ...prev, sortName: val }));
+  };
+
+  const handleResetSortName = () => {
+    const defaultSort = computeDefaultSortName(formData.firstName, formData.lastName);
+    setIsCustomSortName(false);
+    setFormData(prev => ({ ...prev, sortName: defaultSort }));
+  };
 
   const [addrData, setAddrData] = useState<Partial<Address>>(() => {
     if (contact?.addressId) return addresses.find(a => a.id === contact.addressId) || {};
@@ -126,7 +170,18 @@ const ContactForm: React.FC<ContactFormProps> = ({
       return updatedRel;
     });
 
-    onSave({ ...formData as Contact, id: contactId, addressId, updatedAt: new Date().toISOString(), interactions: updatedInteractions }, { ...addrData as Address, id: addressId }, finalRelations);
+    const finalSortName = (formData.sortName && formData.sortName.trim() !== '')
+      ? formData.sortName.trim()
+      : computeDefaultSortName(formData.firstName, formData.lastName);
+
+    onSave({ 
+      ...formData as Contact, 
+      id: contactId, 
+      addressId, 
+      sortName: finalSortName,
+      updatedAt: new Date().toISOString(), 
+      interactions: updatedInteractions 
+    }, { ...addrData as Address, id: addressId }, finalRelations);
     setIsSaving(false);
   };
 
@@ -149,8 +204,47 @@ const ContactForm: React.FC<ContactFormProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        <FormInput label={t('firstName')} value={formData.firstName} onChange={v => setFormData({...formData, firstName: v})} placeholder="Jan" isDark={isDark} />
-        <FormInput label={t('lastName')} value={formData.lastName} onChange={v => setFormData({...formData, lastName: v})} placeholder="Jansen" isDark={isDark} />
+        <FormInput label={t('firstName')} value={formData.firstName} onChange={handleFirstNameChange} placeholder="Jan" isDark={isDark} />
+        <FormInput label={t('lastName')} value={formData.lastName} onChange={handleLastNameChange} placeholder="Jansen" isDark={isDark} />
+        
+        {/* Sorteringsveld */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-black text-gray-500 uppercase flex items-center gap-1.5">
+              <span>{t('sortField')}</span>
+              {isCustomSortName && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${isDark ? 'bg-amber-950/60 text-amber-400 border border-amber-800/60' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>
+                  {t('custom')}
+                </span>
+              )}
+            </label>
+            {isCustomSortName && (
+              <button
+                type="button"
+                onClick={handleResetSortName}
+                className="text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors flex items-center gap-1 cursor-pointer"
+                title={t('resetSortField')}
+              >
+                <RefreshCw size={10} />
+                <span>{t('resetSortField')}</span>
+              </button>
+            )}
+          </div>
+          <input
+            type="text"
+            value={formData.sortName || ''}
+            onChange={e => handleSortNameChange(e.target.value)}
+            placeholder={computeDefaultSortName(formData.firstName, formData.lastName) || t('sortFieldPlaceholder')}
+            className={`w-full text-sm font-semibold border-b outline-none pb-1 focus:border-blue-500 transition-colors ${
+              isDark 
+                ? 'text-slate-200 bg-transparent border-slate-800 placeholder:text-slate-600' 
+                : 'text-gray-800 bg-transparent border-gray-200 placeholder:text-gray-300'
+            }`}
+          />
+          <p className="text-[10px] text-gray-400 dark:text-slate-500">
+            {t('sortFieldHelp')}
+          </p>
+        </div>
         
         {/* Contact Info: Phone and Email */}
         <FormInput label={t('phone')} value={formData.phones?.[0]} onChange={v => setFormData({...formData, phones: [v]})} placeholder="+31 6 12345678" isDark={isDark} />
@@ -175,7 +269,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                   color: formData.typeId === t_obj.id ? 'white' : (isDark ? '#94a3b8' : '#64748b')
                 }}
               >
-                {t_obj.name}
+                {t(t_obj.name)}
               </button>
             ))}
           </div>
@@ -186,18 +280,76 @@ const ContactForm: React.FC<ContactFormProps> = ({
         {/* Planning & Interaction */}
         <div className={`pt-4 border-t space-y-4 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
           <h3 className="text-[10px] font-black uppercase text-blue-500">{t('planningInteraction')}</h3>
-          <FormInput label={t('lastDate')} type="date" value={formData.lastInteractionDate?.split('T')[0]} onChange={v => setFormData({...formData, lastInteractionDate: v ? new Date(v).toISOString() : ''})} isDark={isDark} />
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <FormInput label={t('lastDate')} type="date" value={formData.lastInteractionDate?.split('T')[0]} onChange={v => setFormData({...formData, lastInteractionDate: v ? new Date(v).toISOString() : ''})} isDark={isDark} />
+            </div>
+            {formData.lastInteractionDate ? (
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, lastInteractionDate: '' })}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                  isDark 
+                    ? 'bg-slate-800 border-slate-700 text-red-400 hover:bg-slate-750' 
+                    : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
+                }`}
+                title={t('clearDate')}
+              >
+                <Trash2 size={13} className="text-red-500" />
+                <span>{t('delete')}</span>
+              </button>
+            ) : null}
+          </div>
           
           <FormInput 
-            label="Gewenste Frequentie (in dagen)" 
+            label={t('frequencyDays')} 
             type="number" 
             value={formData.interactionIntervalDays !== undefined ? String(formData.interactionIntervalDays) : ''} 
             onChange={v => setFormData({...formData, interactionIntervalDays: v ? parseInt(v, 10) : undefined})} 
-            placeholder="Bijv. 30" 
+            placeholder={t('frequencyPlaceholder')} 
             isDark={isDark} 
           />
 
           <textarea className={`w-full p-3 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-gray-50 border-gray-200'}`} placeholder={t('recordNow')} value={lastInteractionNotes} onChange={e => setLastInteractionNotes(e.target.value)} />
+
+          {formData.interactions && formData.interactions.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <p className="text-[10px] font-black text-gray-500 uppercase">{t('history')}</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {formData.interactions.map(item => (
+                  <div key={item.id} className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                    isDark ? 'bg-slate-800/60 border-slate-700' : 'bg-gray-50 border-gray-200'
+                  }`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold">{new Date(item.date).toLocaleDateString()}</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold uppercase bg-blue-100 text-blue-700">
+                          {t(item.type === 'phone' ? 'call' : item.type)}
+                        </span>
+                      </div>
+                      {item.notes && <p className="text-gray-500 truncate mt-0.5">{item.notes}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const remaining = (formData.interactions || []).filter(i => i.id !== item.id);
+                        const sorted = [...remaining].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                        setFormData({
+                          ...formData,
+                          interactions: remaining,
+                          lastInteractionDate: sorted[0]?.date || ''
+                        });
+                      }}
+                      className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                      title={t('deleteInteraction')}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Location */}
@@ -218,18 +370,18 @@ const ContactForm: React.FC<ContactFormProps> = ({
              <div className="space-y-3">
                <div className="grid grid-cols-3 gap-2">
                  <div className="col-span-2">
-                   <FormInput label="Straat" value={addrData.street} onChange={v => setAddrData({...addrData, street: v})} isDark={isDark} />
+                   <FormInput label={t('street')} value={addrData.street} onChange={v => setAddrData({...addrData, street: v})} isDark={isDark} />
                  </div>
                  <div>
-                   <FormInput label="Nr" value={addrData.houseNumber} onChange={v => setAddrData({...addrData, houseNumber: v})} isDark={isDark} />
+                   <FormInput label={t('houseNumber')} value={addrData.houseNumber} onChange={v => setAddrData({...addrData, houseNumber: v})} isDark={isDark} />
                  </div>
                </div>
                <div className="grid grid-cols-3 gap-2">
                  <div>
-                   <FormInput label="Postcode" value={addrData.postalCode} onChange={v => setAddrData({...addrData, postalCode: v})} isDark={isDark} />
+                   <FormInput label={t('postalCode')} value={addrData.postalCode} onChange={v => setAddrData({...addrData, postalCode: v})} isDark={isDark} />
                  </div>
                  <div className="col-span-2">
-                   <FormInput label="Plaats" value={addrData.city} onChange={v => setAddrData({...addrData, city: v})} isDark={isDark} />
+                   <FormInput label={t('city')} value={addrData.city} onChange={v => setAddrData({...addrData, city: v})} isDark={isDark} />
                  </div>
                </div>
              </div>
@@ -249,7 +401,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 <div key={index} className={`flex items-center justify-between p-2 border rounded-xl text-xs ${isDark ? 'bg-slate-800/40 border-slate-800' : 'bg-gray-50/50 border-gray-100'}`}>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold truncate">{child.name}</p>
-                    {child.birthDate && <p className="text-[10px] text-gray-400">Jarig op: {child.birthDate}</p>}
+                    {child.birthDate && <p className="text-[10px] text-gray-400">{t('birthdayOn')} {child.birthDate}</p>}
                   </div>
                   <button 
                     type="button" 
@@ -267,12 +419,12 @@ const ContactForm: React.FC<ContactFormProps> = ({
           )}
 
           <div className={`p-3 rounded-2xl border space-y-2 ${isDark ? 'bg-slate-800/20 border-slate-800' : 'bg-gray-50/30 border-gray-100'}`}>
-            <p className="text-[10px] font-bold text-gray-400 uppercase">Kind Toevoegen</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase">{t('addChild')}</p>
             <div className="grid grid-cols-2 gap-2">
               <input 
                 id="new-child-name"
                 className={`p-2 border rounded-xl text-xs outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-gray-200'}`} 
-                placeholder="Naam" 
+                placeholder={t('name')} 
               />
               <input 
                 id="new-child-date"
@@ -314,7 +466,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 <div key={index} className={`flex items-center justify-between p-2 border rounded-xl text-xs ${isDark ? 'bg-slate-800/40 border-slate-800' : 'bg-gray-50/50 border-gray-100'}`}>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold truncate">{pet.name}</p>
-                    <p className="text-[10px] text-gray-400">Soort: {pet.type}</p>
+                    <p className="text-[10px] text-gray-400">{t('species')}: {pet.type}</p>
                   </div>
                   <button 
                     type="button" 
@@ -332,17 +484,17 @@ const ContactForm: React.FC<ContactFormProps> = ({
           )}
 
           <div className={`p-3 rounded-2xl border space-y-2 ${isDark ? 'bg-slate-800/20 border-slate-800' : 'bg-gray-50/30 border-gray-100'}`}>
-            <p className="text-[10px] font-bold text-gray-400 uppercase font-sans">Huisdier Toevoegen</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase font-sans">{t('addPet')}</p>
             <div className="grid grid-cols-2 gap-2">
               <input 
                 id="new-pet-name"
                 className={`p-2 border rounded-xl text-xs outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-gray-200'}`} 
-                placeholder="Naam (bijv. Max)" 
+                placeholder={t('petNamePlaceholder')} 
               />
               <input 
                 id="new-pet-type"
                 className={`p-2 border rounded-xl text-xs outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-gray-200'}`} 
-                placeholder="Soort (bijv. Hond)" 
+                placeholder={t('petTypePlaceholder')} 
               />
             </div>
             <button 
@@ -361,7 +513,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
               }}
               className="w-full py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors font-sans"
             >
-              + Huisdier Toevoegen
+              + {t('addPet')}
             </button>
           </div>
         </div>
@@ -383,7 +535,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <img src={otherContact?.photoUrl || `https://ui-avatars.com/api/?name=${otherContact?.firstName || '?'}`} className="w-6 h-6 rounded-full shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold truncate">{otherContact ? `${otherContact.firstName} ${otherContact.lastName || ''}` : 'Onbekend contact'}</p>
+                        <p className="font-bold truncate">{otherContact ? `${otherContact.firstName} ${otherContact.lastName || ''}` : t('unknownContact')}</p>
                         <select
                           value={rel.type}
                           onChange={(e) => {
@@ -395,7 +547,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                         >
                           {Object.values(RelationType).map(val => (
                             <option key={val} value={val} className={isDark ? 'bg-slate-950 text-slate-100' : 'bg-white text-gray-900'}>
-                              {val}
+                              {t(val)}
                             </option>
                           ))}
                         </select>
@@ -418,13 +570,13 @@ const ContactForm: React.FC<ContactFormProps> = ({
           )}
 
           <div className={`p-3 rounded-2xl border space-y-2 ${isDark ? 'bg-slate-800/20 border-slate-800' : 'bg-gray-50/30 border-gray-100'}`}>
-            <p className="text-[10px] font-bold text-gray-400 uppercase font-sans">Relatie Toevoegen</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase font-sans">{t('addRelation')}</p>
             <div className="relative">
               <input 
                 type="text"
                 value={relationSearch}
                 onChange={e => setRelationSearch(e.target.value)}
-                placeholder="Zoek contact..."
+                placeholder={t('searchContactPlaceholder')}
                 className={`w-full p-2 pl-8 border rounded-xl text-xs outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-gray-200'}`} 
               />
               <Search size={12} className="absolute left-2.5 top-3.5 text-gray-400" />
@@ -435,7 +587,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                   onClick={() => setRelationSearch('')}
                   className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600 text-[10px] font-bold"
                 >
-                  Wissen
+                  {t('clear')}
                 </button>
               )}
             </div>
@@ -470,7 +622,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
             )}
             
             {relationSearch && filteredContactsForRelation.length === 0 && (
-              <p className="text-[10px] text-gray-400 italic">Geen andere contacten gevonden.</p>
+              <p className="text-[10px] text-gray-400 italic">{t('noContactsFound')}</p>
             )}
           </div>
         </div>
@@ -541,7 +693,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
           </h3>
           <textarea 
             className={`w-full p-3 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-gray-50 border-gray-200'}`} 
-            placeholder="Bijv. eet vegetarisch, heeft een hekel aan vliegen..." 
+            placeholder={t('notesPlaceholder')} 
             value={formData.notes || ''} 
             onChange={e => setFormData({...formData, notes: e.target.value})} 
             rows={3}

@@ -19,6 +19,7 @@
         "id": { "type": "string" },
         "firstName": { "type": "string" },
         "lastName": { "type": "string" },
+        "sortName": { "type": "string" },
         "photoUrl": { "type": "string" },
         "birthDate": { "type": "string" },
         "addressId": { "type": "string" },

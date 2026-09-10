@@ -18,7 +18,6 @@ const EventForm: React.FC<EventFormProps> = ({ contacts, onClose, onSave, onDele
   const [title, setTitle] = useState(initialData?.title || '');
   const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   const [type, setType] = useState<InteractionMode>(initialData?.type || 'physical');
-  const [notes, setNotes] = useState(initialData?.notes || '');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>(initialData?.contactIds || []);
 
@@ -45,7 +44,7 @@ const EventForm: React.FC<EventFormProps> = ({ contacts, onClose, onSave, onDele
       title,
       date: new Date(date).toISOString(),
       type,
-      notes,
+      notes: '',
       contactIds: selectedContactIds,
       createdAt: initialData?.createdAt || new Date().toISOString()
     };
@@ -80,7 +79,7 @@ const EventForm: React.FC<EventFormProps> = ({ contacts, onClose, onSave, onDele
                   type="text" 
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  placeholder="Bijv. Vrijdagmiddagborrel"
+                  placeholder={t('eventPlaceholder')}
                   autoComplete="off"
                   className={`w-full px-4 py-3 rounded-2xl border outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-medium ${isDark ? 'bg-slate-800 border-slate-700 text-slate-100' : 'bg-gray-50 border-gray-100'}`}
                 />
@@ -115,17 +114,6 @@ const EventForm: React.FC<EventFormProps> = ({ contacts, onClose, onSave, onDele
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('notes')}</label>
-              <textarea 
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                rows={3}
-                className={`w-full px-4 py-3 rounded-2xl border outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-medium resize-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-100' : 'bg-gray-50 border-gray-100'}`}
-                placeholder="Details over de gebeurtenis..."
-              />
             </div>
 
             <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-slate-800">
@@ -174,7 +162,7 @@ const EventForm: React.FC<EventFormProps> = ({ contacts, onClose, onSave, onDele
               <button 
                 type="button" 
                 onClick={() => {
-                  if (window.confirm('Weet u zeker dat u deze gebeurtenis wilt verwijderen?')) {
+                  if (window.confirm(t('confirmDeleteEvent'))) {
                     onDelete(initialData.id);
                   }
                 }}

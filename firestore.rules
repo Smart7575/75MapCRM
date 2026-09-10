@@ -18,9 +18,9 @@ service cloud.firestore {
       allow get: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUser(incoming());
       allow update: if isOwner(userId) && isValidUser(incoming()) && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['email', 'lastLogin']) ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['lastLogin'])
+        incoming().diff(existing()).affectedKeys().hasOnly(['email', 'lastLogin'])
       );
+      allow delete: if isOwner(userId);
 
       function isValidUser(data) {
         return data.keys().hasAll(['email', 'createdAt']) &&
@@ -34,13 +34,14 @@ service cloud.firestore {
         allow get: if isOwner(userId) && isValidId(contactId);
         allow create: if isOwner(userId) && isValidContact(incoming()) && isValidId(contactId);
         allow update: if isOwner(userId) && isValidContact(incoming()) && (
-          incoming().diff(existing()).affectedKeys().hasAny(['firstName', 'lastName', 'photoUrl', 'birthDate', 'addressId', 'typeId', 'phones', 'emails', 'pets', 'children', 'socialLinks', 'hobbies', 'notes', 'isFavorite', 'updatedAt', 'interactions', 'lastInteractionDate', 'interactionIntervalDays'])
+          incoming().diff(existing()).affectedKeys().hasAny(['firstName', 'lastName', 'sortName', 'photoUrl', 'birthDate', 'addressId', 'typeId', 'phones', 'emails', 'pets', 'children', 'socialLinks', 'hobbies', 'notes', 'isFavorite', 'updatedAt', 'interactions', 'lastInteractionDate', 'interactionIntervalDays'])
         );
         allow delete: if isOwner(userId);
 
         function isValidContact(data) {
           return data.firstName is string && data.firstName.size() <= 100 &&
                  (data.lastName == null || (data.lastName is string && data.lastName.size() <= 100)) &&
+                 (data.sortName == null || (data.sortName is string && data.sortName.size() <= 200)) &&
                  data.addressId is string && data.typeId is string &&
                  data.createdAt is string && data.updatedAt is string;
         }

@@ -96,3 +96,56 @@ export function removeUndefinedFields<T>(obj: T): T {
   }
   return newObj as T;
 }
+
+/**
+ * Normalizes a phone number for telephone links (tel: protocol).
+ * Retains digits and a leading +, while stripping formatting characters (spaces, dashes, parens).
+ */
+export function cleanPhoneNumber(phone?: string): string {
+  if (!phone) return '';
+  const trimmed = phone.trim();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+  return hasPlus ? `+${digits}` : digits;
+}
+
+/**
+ * Triggers the device's native phone dialer application with the specified phone number.
+ */
+export function dialPhoneNumber(phoneNumber: string, e?: React.MouseEvent | React.TouchEvent): void {
+  if (e) {
+    e.stopPropagation();
+  }
+  const clean = cleanPhoneNumber(phoneNumber);
+  if (!clean) return;
+  const telUri = `tel:${clean}`;
+  window.location.href = telUri;
+}
+
+/**
+ * Computes the default sorting string for a contact: "Achternaam, Voornaam".
+ * If only lastName is given: "Achternaam".
+ * If only firstName is given: "Voornaam".
+ * Example:
+ *   Stefan Martinali -> "Martinali, Stefan"
+ *   Corina van der Koppel -> "van der Koppel, Corina"
+ */
+export function computeDefaultSortName(firstName?: string, lastName?: string): string {
+  const f = firstName?.trim() || '';
+  const l = lastName?.trim() || '';
+  if (l && f) return `${l}, ${f}`;
+  if (l) return l;
+  if (f) return f;
+  return '';
+}
+
+/**
+ * Returns the effective sorting name for a contact.
+ * Uses custom sortName if provided, otherwise calculates the default "Achternaam, Voornaam".
+ */
+export function getContactSortName(contact: { firstName?: string; lastName?: string; sortName?: string }): string {
+  if (contact.sortName && contact.sortName.trim() !== '') {
+    return contact.sortName.trim();
+  }
+  return computeDefaultSortName(contact.firstName, contact.lastName);
+}

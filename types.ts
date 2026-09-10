@@ -53,6 +53,7 @@ export interface Contact {
   id: string;
   firstName: string;
   lastName?: string;
+  sortName?: string;
   photoUrl?: string;
   birthDate?: string;
   addressId: string;
@@ -106,4 +107,4 @@ export interface Event {
   createdAt: string;
 }
 
-export type ViewMode = 'map' | 'list' | 'dashboard' | 'calendar' | 'stats' | 'planning' | 'events';
+export type ViewMode = 'map' | 'list' | 'dashboard' | 'calendar' | 'stats' | 'planning' | 'events' | 'settings';
