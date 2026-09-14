@@ -55,7 +55,6 @@ import EventsView from './components/EventsView.tsx';
 import ContactDetails from './components/ContactDetails.tsx';
 import CalendarView from './components/CalendarView.tsx';
 import AuthScreen from './components/AuthScreen.tsx';
-import PlanningView from './components/PlanningView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { compressImageBase64, removeUndefinedFields, dialPhoneNumber } from './utils.ts';
 
@@ -677,7 +676,7 @@ const App: React.FC = () => {
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg">
             <Users size={24} />
           </div>
-          {isSidebarOpen && <h1 className={`text-xl font-bold tracking-tight ${theme === 'dark' ? 'text-blue-400' : 'text-blue-900'}`}>75MapCRM</h1>}
+          {isSidebarOpen && <h1 className={`text-xl font-bold tracking-tight ${theme === 'dark' ? 'text-blue-400' : 'text-blue-900'}`}>MapCRM75</h1>}
         </div>
 
         <nav className="flex-1 mt-6 px-2 space-y-1 overflow-y-auto">
@@ -703,14 +702,6 @@ const App: React.FC = () => {
             active={viewMode === 'list'} 
             expanded={isSidebarOpen} 
             onClick={() => setViewMode('list')} 
-            theme={theme}
-          />
-          <NavItem 
-            icon={<Activity size={20} />} 
-            label={t('planning')} 
-            active={viewMode === 'planning'} 
-            expanded={isSidebarOpen} 
-            onClick={() => setViewMode('planning')} 
             theme={theme}
           />
           <NavItem 
@@ -861,9 +852,9 @@ const App: React.FC = () => {
                   <ShieldAlert size={40} />
                 </div>
                 <div className="space-y-2">
-                  <h3 className={`text-2xl font-black ${theme === 'dark' ? 'text-slate-100' : 'text-gray-900'}`}>Configuratie Vereist</h3>
+                  <h3 className={`text-2xl font-black ${theme === 'dark' ? 'text-slate-100' : 'text-gray-900'}`}>{t('configRequired')}</h3>
                   <p className="text-gray-500 text-sm leading-relaxed">
-                    Firestore blokkeert de toegang. Pas de Security Rules aan in de Firebase Console.
+                    {t('configRequiredDesc')}
                   </p>
                 </div>
                 <a 
@@ -872,7 +863,7 @@ const App: React.FC = () => {
                   rel="noopener noreferrer"
                   className="w-full flex items-center justify-center gap-2 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold transition-all shadow-xl shadow-blue-100 active:scale-95"
                 >
-                  Firebase Console Openen
+                  {t('openFirebaseConsole')}
                   <ExternalLink size={16} />
                 </a>
               </div>
@@ -903,27 +894,14 @@ const App: React.FC = () => {
                   theme={theme}
                 />
               )}
-              {viewMode === 'dashboard' && (
+              {(viewMode === 'dashboard' || viewMode === 'planning') && (
                 <Dashboard 
-                  contacts={contacts} 
-                  addresses={addresses} 
-                  types={types}
-                  onContactClick={(id) => {
-                    setSelectedContactId(id);
-                    setViewMode('map');
-                  }}
-                  onAddContact={() => handleAddContact()}
-                  t={t}
-                  theme={theme}
-                />
-              )}
-              {viewMode === 'planning' && (
-                <PlanningView 
                   contacts={contacts} 
                   addresses={addresses} 
                   types={types}
                   onContactClick={(id) => setSelectedContactId(id)}
                   onCall={handleCallContact}
+                  onAddContact={() => handleAddContact()}
                   t={t}
                   theme={theme}
                 />
@@ -948,6 +926,7 @@ const App: React.FC = () => {
                   events={events}
                   t={t}
                   theme={theme}
+                  onContactClick={(id) => setSelectedContactId(id)}
                 />
               )}
               {viewMode === 'events' && (
@@ -1075,13 +1054,6 @@ const App: React.FC = () => {
           label={t('contacts')} 
           active={viewMode === 'list'} 
           onClick={() => setViewMode('list')} 
-          theme={theme} 
-        />
-        <MobileNavItem 
-          icon={<Activity size={19} />} 
-          label={t('planning')} 
-          active={viewMode === 'planning'} 
-          onClick={() => setViewMode('planning')} 
           theme={theme} 
         />
         <MobileNavItem 

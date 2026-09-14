@@ -10,6 +10,7 @@ interface StatsViewProps {
   events?: Event[];
   t: (key: any) => string;
   theme?: string;
+  onContactClick?: (id: string) => void;
 }
 
 // Resilient Error Boundary to ensure stats never crash the page
@@ -362,7 +363,7 @@ const LocationBarChart: React.FC<LocationBarChartProps> = ({ data, totalWithCity
 };
 
 // Main StatsView Component
-const StatsView: React.FC<StatsViewProps> = ({ contacts, types, addresses, events = [], t, theme }) => {
+const StatsView: React.FC<StatsViewProps> = ({ contacts, types, addresses, events = [], t, theme, onContactClick }) => {
   const isDark = theme === 'dark';
 
   // Process contact types data with percentages
@@ -451,6 +452,7 @@ const StatsView: React.FC<StatsViewProps> = ({ contacts, types, addresses, event
             events={events}
             isDark={isDark}
             t={t}
+            onContactClick={onContactClick}
           />
         </StatsErrorBoundary>
 
@@ -551,11 +553,14 @@ const StatsView: React.FC<StatsViewProps> = ({ contacts, types, addresses, event
                   return (
                     <div 
                       key={c.id} 
+                      onClick={() => onContactClick?.(c.id)}
                       className={`${
                         isDark 
                           ? 'bg-slate-850/40 border-slate-800/80 hover:bg-slate-800' 
                           : 'bg-gray-50/70 border-gray-100 hover:bg-white'
-                      } flex items-center justify-between p-3.5 sm:p-4 rounded-2xl border hover:shadow-md transition-all group`}
+                      } flex items-center justify-between p-3.5 sm:p-4 rounded-2xl border hover:shadow-md transition-all group ${
+                        onContactClick ? 'cursor-pointer' : ''
+                      }`}
                     >
                       <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                         <div className="text-base sm:text-lg font-black text-gray-400/60 w-5 sm:w-6 shrink-0 text-center">

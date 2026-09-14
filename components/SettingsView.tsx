@@ -262,7 +262,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 ) : (
                   <>
                     <KeyRound size={16} className="text-blue-500" />
-                    <span className="font-bold">E-mail & Wachtwoord</span>
+                    <span className="font-bold">{t('emailAndPassword')}</span>
                   </>
                 )}
               </div>
@@ -292,7 +292,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className={`p-4 rounded-2xl border flex items-center justify-between ${isDark ? 'bg-slate-800/50 border-slate-800' : 'bg-gray-50 border-gray-100'}`}>
               <div>
                 <span className="font-bold text-xs block">{t('themePreference')}</span>
-                <span className="text-[11px] text-gray-400">{isDark ? 'Donkere modus' : 'Lichte modus'}</span>
+                <span className="text-[11px] text-gray-400">{isDark ? t('darkMode') : t('lightMode')}</span>
               </div>
               <button
                 type="button"
@@ -304,7 +304,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }`}
               >
                 {isDark ? <Sun size={16} /> : <Moon size={16} />}
-                <span>{isDark ? 'Licht' : 'Donker'}</span>
+                <span>{isDark ? t('light') : t('dark')}</span>
               </button>
             </div>
 
@@ -379,7 +379,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className={`p-3 rounded-2xl border ${isDark ? 'bg-slate-800/40 border-slate-800' : 'bg-gray-50 border-gray-100'}`}>
               <Tag size={16} className="mx-auto text-amber-500 mb-1" />
               <span className="text-lg font-black block">{typesCount}</span>
-              <span className="text-[10px] text-gray-400 font-bold uppercase">Types</span>
+              <span className="text-[10px] text-gray-400 font-bold uppercase">{t('types')}</span>
             </div>
           </div>
 

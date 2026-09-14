@@ -1,5 +1,5 @@
 {
-  "name": "75MapCRM",
+  "name": "MapCRM75",
   "description": "A visual CRM for managing personal and business relationships with a focus on geography and milestones.",
   "requestFramePermissions": [
     "geolocation"

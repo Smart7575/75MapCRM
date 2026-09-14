@@ -23,13 +23,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({ contacts, types, onContactC
       months: ['Januari', 'Februari', 'Maart', 'April', 'Mei', 'Juni', 'Juli', 'Augustus', 'September', 'Oktober', 'November', 'December'],
       days: ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'],
       today: 'Vandaag',
-      subtitle: 'Plan je sociale uitjes en verjaardagskaarten.'
+      subtitle: 'Verjaardagen'
     },
     en: {
       months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
       days: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
       today: 'Today',
-      subtitle: 'Plan your social outings and birthday cards.'
+      subtitle: 'Birthdays'
     }
   };
 

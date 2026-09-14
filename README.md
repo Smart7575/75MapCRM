@@ -1,14 +1,14 @@
-# MapCRM — Location-Intelligent Relationship Management
+# MapCRM75 — Location-Intelligent Relationship Management
 
-Welcome to **MapCRM**! This repository is configured to be fully out-of-the-box compatible with Vercel for zero-config deployments.
+Welcome to **MapCRM75**! This repository is configured to be fully out-of-the-box compatible with Vercel for zero-config deployments.
 
 ---
 
-## 📖 Brochure: Why Choose MapCRM?
+## 📖 Brochure: Why Choose MapCRM75?
 
-MapCRM is the ultimate relationship and location intelligence tool designed for modern communities, neighborhood organizers, and active networks. It bridges the gap between contact management and physical geography, letting you visualize where your connections live, meet, and interact.
+MapCRM75 is the ultimate relationship and location intelligence tool designed for modern communities, neighborhood organizers, and active networks. It bridges the gap between contact management and physical geography, letting you visualize where your connections live, meet, and interact.
 
-By placing your contacts directly onto an interactive, beautiful map, MapCRM transforms flat spreadsheets into actionable spatial insights. Easily identify spatial clusters of your community, plan regional get-togethers, and coordinate targeted localization initiatives. Track comprehensive histories of physical and digital interactions, keep records updated, and never lose touch with your local members. Built on secure Firestore architecture, your data stays synchronized in real-time, completely secure, and accessible from any device. MapCRM empowers you to build stronger, more organized, and physically connected relationships.
+By placing your contacts directly onto an interactive, beautiful map, MapCRM75 transforms flat spreadsheets into actionable spatial insights. Easily identify spatial clusters of your community, plan regional get-togethers, and coordinate targeted localization initiatives. Track comprehensive histories of physical and digital interactions, keep records updated, and never lose touch with your local members. Built on secure Firestore architecture, your data stays synchronized in real-time, completely secure, and accessible from any device. MapCRM75 empowers you to build stronger, more organized, and physically connected relationships.
 
 ---
 
@@ -24,7 +24,7 @@ By placing your contacts directly onto an interactive, beautiful map, MapCRM tra
 
 ## 🚀 How to Deploy on Vercel (Step-by-Step)
 
-Deploying MapCRM on Vercel is extremely straightforward. Since we have configured `package.json`, `tsconfig.json`, `vite.config.ts`, and a native `vercel.json` rewrite handler, follow these simple steps:
+Deploying MapCRM75 on Vercel is extremely straightforward. Since we have configured `package.json`, `tsconfig.json`, `vite.config.ts`, and a native `vercel.json` rewrite handler, follow these simple steps:
 
 ### Step 1: Upload to GitHub
 Initialize Git, commit your files, and push them to a private or public repository on GitHub:

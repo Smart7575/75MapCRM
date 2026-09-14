@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Contact, Event, InteractionMode } from '../types.ts';
-import { BarChart2, Users, Smartphone, Phone, MessageSquare, ArrowUpDown, Filter } from 'lucide-react';
+import { BarChart2, Users, Smartphone, Phone, MessageSquare, ArrowUpDown, Filter, Clock, RotateCcw } from 'lucide-react';
 
 interface WeeklyInteractionsChartProps {
   contacts: Contact[];
   events?: Event[];
   isDark: boolean;
   t: (key: any) => string;
+  onContactClick?: (id: string) => void;
 }
 
 type PeriodOption = '1m' | '3m' | '6m' | '12m';
@@ -20,6 +21,7 @@ interface UnifiedInteraction {
   kind: 'contact' | 'event';
   title: string;
   contactNames: string[];
+  contactId?: string;
 }
 
 interface WeekSlot {
@@ -63,7 +65,8 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
   contacts,
   events = [],
   isDark,
-  t
+  t,
+  onContactClick
 }) => {
   // Default to 6 months as requested
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodOption>('6m');
@@ -117,7 +120,8 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
         type: event.type || 'physical',
         kind: 'event',
         title: event.title || (t('groupInteractionFallback') || 'Groepsinteractie'),
-        contactNames: attendeeNames
+        contactNames: attendeeNames,
+        contactId: (event.contactIds && event.contactIds.length === 1) ? event.contactIds[0] : undefined
       });
     });
 
@@ -144,7 +148,8 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
           type: item.type || 'physical',
           kind: 'contact',
           title: displayTitle,
-          contactNames: [`${contact.firstName} ${contact.lastName || ''}`.trim()]
+          contactNames: [`${contact.firstName} ${contact.lastName || ''}`.trim()],
+          contactId: contact.id
         });
       });
 
@@ -167,7 +172,8 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
               type: 'physical',
               kind: 'contact',
               title: t('nu_vastleggen') || 'Interactie vastgelegd',
-              contactNames: [`${contact.firstName} ${contact.lastName || ''}`.trim()]
+              contactNames: [`${contact.firstName} ${contact.lastName || ''}`.trim()],
+              contactId: contact.id
             });
           }
         }
@@ -279,16 +285,22 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
     return list;
   }, [weekSlots, sortOrder, onlyWithInteractions]);
 
-  // Determine which week details to display in the inspect panel below
+  // Latest 10 interactions across all contacts and events, sorted newest first
+  const latest10Interactions = useMemo(() => {
+    return [...allInteractions]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 10);
+  }, [allInteractions]);
+
+  // Determine which week details to display in the inspect panel below.
+  // If activeWeekKey is set, display that week. Otherwise null (displays latest 10 interactions overview).
   const displayedWeek = useMemo(() => {
     if (activeWeekKey) {
       const found = weekSlots.find(w => `${w.year}-${w.weekNum}` === activeWeekKey);
       if (found) return found;
     }
-    // Default to busiest week if available, otherwise current week (last slot)
-    if (busiestWeek) return busiestWeek;
-    return weekSlots[weekSlots.length - 1];
-  }, [activeWeekKey, weekSlots, busiestWeek]);
+    return null;
+  }, [activeWeekKey, weekSlots]);
 
   const getModeIcon = (mode: InteractionMode) => {
     switch(mode) {
@@ -492,7 +504,7 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
           ) : (
             displayedSlots.map((slot) => {
               const weekKey = `${slot.year}-${slot.weekNum}`;
-              const isSelected = displayedWeek && `${displayedWeek.year}-${displayedWeek.weekNum}` === weekKey;
+              const isSelected = activeWeekKey === weekKey;
               const barWidthPercent = slot.count > 0 
                 ? Math.max((slot.count / maxCount) * 100, 3) 
                 : 0;
@@ -500,7 +512,7 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
               return (
                 <div
                   key={`slot-${weekKey}`}
-                  onClick={() => setActiveWeekKey(weekKey)}
+                  onClick={() => setActiveWeekKey(prev => prev === weekKey ? null : weekKey)}
                   className={`group rounded-2xl p-2.5 sm:p-3 transition-all cursor-pointer border ${
                     isSelected
                       ? isDark 
@@ -639,8 +651,8 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
         </div>
       </div>
 
-      {/* Week Details Inspection Card */}
-      {displayedWeek && (
+      {/* Details Card: Selected Week OR Overview of Latest 10 Interactions */}
+      {displayedWeek ? (
         <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
           isDark ? 'bg-slate-850/60 border-slate-800' : 'bg-blue-50/40 border-blue-100/80'
         }`}>
@@ -660,9 +672,19 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
-              <span className="text-xs font-bold text-gray-500">
-                {t('numberOfInteractionsColon') || 'Aantal interacties:'}
-              </span>
+              <button
+                type="button"
+                onClick={() => setActiveWeekKey(null)}
+                className={`text-xs font-bold px-2.5 py-1 rounded-xl transition-colors border flex items-center gap-1.5 ${
+                  isDark 
+                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' 
+                    : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 shadow-xs'
+                }`}
+                title={t('showAllLast10')}
+              >
+                <RotateCcw size={12} />
+                <span>{t('showAllLast10')}</span>
+              </button>
               <span className={`text-sm font-black px-2.5 py-0.5 rounded-lg ${
                 displayedWeek.count > 0
                   ? 'text-white bg-blue-600'
@@ -679,8 +701,15 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
               {displayedWeek.interactions.map(item => (
                 <div
                   key={item.id}
-                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs ${
-                    isDark ? 'bg-slate-800/80 border-slate-700/70 text-slate-200' : 'bg-white border-gray-200/70 text-gray-800'
+                  onClick={() => {
+                    if (item.contactId && onContactClick) {
+                      onContactClick(item.contactId);
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-colors ${
+                    item.contactId && onContactClick ? 'cursor-pointer' : ''
+                  } ${
+                    isDark ? 'bg-slate-800/80 border-slate-700/70 text-slate-200 hover:bg-slate-800' : 'bg-white border-gray-200/70 text-gray-800 hover:bg-gray-50'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
@@ -712,6 +741,93 @@ const WeeklyInteractionsChart: React.FC<WeeklyInteractionsChartProps> = ({
           ) : (
             <p className="text-xs text-gray-400 italic mt-1">
               {t('noInteractionsThisWeek') || 'Geen interacties vastgelegd in deze week.'}
+            </p>
+          )}
+        </div>
+      ) : (
+        /* Default: Overview of the Last 10 Interactions */
+        <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+          isDark ? 'bg-slate-850/60 border-slate-800' : 'bg-white border-gray-100 shadow-sm'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className={`p-2 rounded-xl ${
+                isDark ? 'bg-blue-900/40 text-blue-400 border border-blue-800/60' : 'bg-blue-50 text-blue-600 border border-blue-100'
+              }`}>
+                <Clock size={16} />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm sm:text-base text-gray-900 dark:text-slate-100">
+                  {t('last10Interactions')}
+                </h4>
+                <p className="text-xs text-gray-400 font-medium">
+                  {t('last10InteractionsSubtitle')}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-xl ${
+                isDark ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-gray-100 text-gray-600 border border-gray-200'
+              }`}>
+                {latest10Interactions.length} {latest10Interactions.length === 1 ? t('interactionUnitSingle') : t('interactionsUnit')}
+              </span>
+            </div>
+          </div>
+
+          {/* List of the 10 most recent interactions */}
+          {latest10Interactions.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-2">
+              {latest10Interactions.map(item => (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    if (item.contactId && onContactClick) {
+                      onContactClick(item.contactId);
+                    }
+                  }}
+                  className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all ${
+                    item.contactId && onContactClick ? 'cursor-pointer hover:scale-[1.01]' : ''
+                  } ${
+                    isDark 
+                      ? 'bg-slate-800/80 border-slate-700/70 text-slate-200 hover:border-blue-500/50 hover:bg-slate-800' 
+                      : 'bg-gray-50/70 border-gray-200/70 text-gray-800 hover:border-blue-200 hover:bg-white hover:shadow-xs'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`p-2 rounded-xl shrink-0 ${
+                      item.kind === 'event'
+                        ? isDark ? 'bg-purple-900/40 text-purple-400' : 'bg-purple-50 text-purple-600'
+                        : isDark ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-50 text-blue-600'
+                    }`}>
+                      {getModeIcon(item.type)}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-bold truncate text-xs sm:text-sm" title={item.title}>
+                        {item.title}
+                      </p>
+                      {item.contactNames.length > 0 && (
+                        <p className="text-[11px] text-gray-400 truncate">
+                          {item.contactNames.join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 shrink-0 font-medium">
+                    {new Date(item.date).toLocaleDateString(undefined, { 
+                      weekday: 'short', 
+                      day: 'numeric', 
+                      month: 'short',
+                      year: new Date(item.date).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 italic mt-1">
+              {t('noInteractionsFound')}
             </p>
           )}
         </div>
