@@ -34,7 +34,12 @@ import {
   MapPin, 
   HeartHandshake, 
   Tag,
-  LogOut
+  LogOut,
+  Sparkles,
+  RotateCcw,
+  Map as MapIcon,
+  Check,
+  ArrowRight
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -52,6 +57,11 @@ interface SettingsViewProps {
   onImportClick: () => void;
   onLogout?: () => void;
   t: (key: any) => string;
+  onLoadDemoData?: () => Promise<void>;
+  onRemoveDemoData?: () => Promise<void>;
+  onClearAllData?: () => Promise<void>;
+  demoContactsCount?: number;
+  onNavigateToMap?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -68,7 +78,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onExportData,
   onImportClick,
   onLogout,
-  t
+  t,
+  onLoadDemoData,
+  onRemoveDemoData,
+  onClearAllData,
+  demoContactsCount = 0,
+  onNavigateToMap
 }) => {
   const isDark = theme === 'dark';
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -76,6 +91,78 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteStage, setDeleteStage] = useState<string>('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Demo data states
+  const [isLoadingDemo, setIsLoadingDemo] = useState(false);
+  const [isRemovingDemo, setIsRemovingDemo] = useState(false);
+  const [demoFeedback, setDemoFeedback] = useState<{ type: 'success' | 'error'; message: string; showMapBtn?: boolean } | null>(null);
+
+  // Clean start states
+  const [showCleanStartModal, setShowCleanStartModal] = useState(false);
+  const [cleanStartInput, setCleanStartInput] = useState('');
+  const [isClearingAll, setIsClearingAll] = useState(false);
+  const [cleanStartError, setCleanStartError] = useState<string | null>(null);
+  const [cleanStartSuccess, setCleanStartSuccess] = useState(false);
+
+  const cleanConfirmWord = language === 'nl' ? 'SCHOON' : 'CLEAN';
+
+  const handleAddDemo = async () => {
+    if (!onLoadDemoData) return;
+    setIsLoadingDemo(true);
+    setDemoFeedback(null);
+    try {
+      await onLoadDemoData();
+      setDemoFeedback({
+        type: 'success',
+        message: t('demoDataAdded'),
+        showMapBtn: true
+      });
+    } catch (err: any) {
+      setDemoFeedback({
+        type: 'error',
+        message: err?.message || t('errorDefault')
+      });
+    } finally {
+      setIsLoadingDemo(false);
+    }
+  };
+
+  const handleRemoveDemo = async () => {
+    if (!onRemoveDemoData) return;
+    setIsRemovingDemo(true);
+    setDemoFeedback(null);
+    try {
+      await onRemoveDemoData();
+      setDemoFeedback({
+        type: 'success',
+        message: t('demoDataRemoved')
+      });
+    } catch (err: any) {
+      setDemoFeedback({
+        type: 'error',
+        message: err?.message || t('errorDefault')
+      });
+    } finally {
+      setIsRemovingDemo(false);
+    }
+  };
+
+  const handleExecuteCleanStart = async () => {
+    if (!onClearAllData) return;
+    setIsClearingAll(true);
+    setCleanStartError(null);
+    try {
+      await onClearAllData();
+      setShowCleanStartModal(false);
+      setCleanStartInput('');
+      setCleanStartSuccess(true);
+      setTimeout(() => setCleanStartSuccess(false), 5000);
+    } catch (err: any) {
+      setCleanStartError(err?.message || t('errorDefault'));
+    } finally {
+      setIsClearingAll(false);
+    }
+  };
 
   // Re-auth state
   const [needsReauth, setNeedsReauth] = useState(false);
@@ -439,6 +526,167 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Demo Data & Clean Start Division */}
+          <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800 space-y-4">
+            {/* Demo Data Card */}
+            <div className={`p-4 rounded-2xl border ${
+              isDark ? 'bg-slate-800/40 border-slate-800' : 'bg-blue-50/40 border-blue-100'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-blue-600/10 text-blue-600 dark:text-blue-400 shrink-0">
+                    <Sparkles size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-xs flex items-center gap-2">
+                      <span>{t('demoDataTitle')}</span>
+                      {demoContactsCount > 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          {t('demoDataPresent').replace('{count}', demoContactsCount.toString())}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500">
+                          {t('demoDataNotPresent')}
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      {t('demoDataDesc')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Demo action feedback */}
+              {demoFeedback && (
+                <div className={`mb-3 p-3 rounded-xl text-xs flex items-center justify-between gap-2 animate-in fade-in duration-200 ${
+                  demoFeedback.type === 'success'
+                    ? (isDark ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800' : 'bg-emerald-50 text-emerald-800 border border-emerald-200')
+                    : (isDark ? 'bg-red-950/60 text-red-300 border border-red-800' : 'bg-red-50 text-red-800 border border-red-200')
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {demoFeedback.type === 'success' ? <Check size={16} className="shrink-0 text-emerald-500" /> : <AlertTriangle size={16} className="shrink-0 text-red-500" />}
+                    <span>{demoFeedback.message}</span>
+                  </div>
+                  {demoFeedback.showMapBtn && onNavigateToMap && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToMap}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shrink-0 flex items-center gap-1 shadow-sm transition-all"
+                    >
+                      <MapIcon size={12} />
+                      <span>{t('viewOnMap')}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  id="settings-load-demo-data-btn"
+                  onClick={handleAddDemo}
+                  disabled={isLoadingDemo || isRemovingDemo}
+                  className="py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition-all"
+                >
+                  {isLoadingDemo ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>{t('loadingDemoData')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      <span>{t('loadDemoData')}</span>
+                    </>
+                  )}
+                </button>
+
+                {demoContactsCount > 0 && (
+                  <button
+                    type="button"
+                    id="settings-remove-demo-data-btn"
+                    onClick={handleRemoveDemo}
+                    disabled={isLoadingDemo || isRemovingDemo}
+                    className={`py-2 px-4 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all active:scale-95 disabled:opacity-50 ${
+                      isDark 
+                        ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-red-400' 
+                        : 'bg-white border-red-200 hover:bg-red-50 text-red-600 shadow-sm'
+                    }`}
+                  >
+                    {isRemovingDemo ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>{t('removingDemoData')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={14} />
+                        <span>{t('removeDemoData')}</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {demoContactsCount > 0 && onNavigateToMap && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToMap}
+                    className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                      isDark ? 'text-slate-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <MapIcon size={14} className="text-blue-500" />
+                    <span>{t('viewOnMap')}</span>
+                    <ArrowRight size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Clean Start Card */}
+            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              isDark ? 'bg-slate-800/30 border-slate-800' : 'bg-gray-50/80 border-gray-100'
+            }`}>
+              <div className="flex items-start gap-3 max-w-xl">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 shrink-0">
+                  <RotateCcw size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-xs">{t('cleanStartTitle')}</h3>
+                  <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                    {t('cleanStartDesc')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="settings-clean-start-modal-btn"
+                onClick={() => {
+                  setShowCleanStartModal(true);
+                  setCleanStartInput('');
+                  setCleanStartError(null);
+                }}
+                className={`py-2 px-3.5 rounded-xl font-bold text-xs shrink-0 flex items-center justify-center gap-1.5 border transition-all active:scale-95 ${
+                  isDark 
+                    ? 'bg-slate-800 border-amber-900/50 hover:bg-slate-700 text-amber-400' 
+                    : 'bg-white border-amber-200 hover:bg-amber-50 text-amber-800 shadow-sm'
+                }`}
+              >
+                <RotateCcw size={13} />
+                <span>{t('cleanStartAction')}</span>
+              </button>
+            </div>
+
+            {cleanStartSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in duration-200">
+                <Check size={16} className="text-emerald-500 shrink-0" />
+                <span>{t('cleanStartSuccess')}</span>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Danger Zone: Delete Account */}
@@ -654,6 +902,93 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Clean Start Confirmation Modal */}
+      {showCleanStartModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-md rounded-3xl p-6 border shadow-2xl relative space-y-5 ${
+            isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-gray-200 text-gray-900'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <RotateCcw size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-black tracking-tight text-amber-600 dark:text-amber-400">
+                  {t('cleanStartConfirmTitle')}
+                </h3>
+                <p className="text-xs text-gray-500 font-medium">
+                  {contactsCount} {t('contacts')}, {addressesCount} {t('uniqueAddresses')}
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-3.5 rounded-2xl border text-xs space-y-1.5 leading-relaxed ${
+              isDark ? 'bg-slate-800/40 border-slate-800 text-slate-300' : 'bg-gray-50 border-gray-100 text-gray-700'
+            }`}>
+              <p className="font-semibold">{t('cleanStartConfirmWarning')}</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-gray-600 dark:text-slate-400">
+                {t('cleanStartConfirmPrompt')} <span className="font-mono font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest underline">{cleanConfirmWord}</span>:
+              </label>
+              <input
+                type="text"
+                id="clean-start-confirm-input"
+                value={cleanStartInput}
+                onChange={e => setCleanStartInput(e.target.value)}
+                placeholder={cleanConfirmWord}
+                className={`w-full px-4 py-2.5 rounded-xl border text-xs font-mono font-bold tracking-widest uppercase outline-none transition-all ${
+                  isDark 
+                    ? 'bg-slate-800 border-slate-700 text-white focus:border-amber-500' 
+                    : 'bg-white border-gray-200 text-gray-900 focus:border-amber-500'
+                }`}
+                autoFocus
+              />
+            </div>
+
+            {cleanStartError && (
+              <div className="p-3 rounded-xl bg-red-100 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 text-xs">
+                {cleanStartError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCleanStartModal(false)}
+                disabled={isClearingAll}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {t('cancel')}
+              </button>
+
+              <button
+                type="button"
+                id="execute-clean-start-btn"
+                onClick={handleExecuteCleanStart}
+                disabled={cleanStartInput.trim().toUpperCase() !== cleanConfirmWord || isClearingAll}
+                className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 disabled:opacity-40 disabled:pointer-events-none text-white font-bold text-xs tracking-wide transition-all flex items-center gap-2 shadow-lg shadow-amber-600/20"
+              >
+                {isClearingAll ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>{t('deleting')}...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={14} />
+                    <span>{t('cleanStartAction')}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

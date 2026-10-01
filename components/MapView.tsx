@@ -49,6 +49,25 @@ const MapResizeHandler = () => {
   return null;
 };
 
+const MapBoundsHandler = ({ addresses }: { addresses: Address[] }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (addresses.length === 0) return;
+    const validAddresses = addresses.filter(
+      a => typeof a.lat === 'number' && typeof a.lng === 'number' && !isNaN(a.lat) && !isNaN(a.lng)
+    );
+    if (validAddresses.length === 0) return;
+
+    if (validAddresses.length === 1) {
+      map.flyTo([validAddresses[0].lat, validAddresses[0].lng], 13);
+    } else {
+      const bounds = L.latLngBounds(validAddresses.map(a => [a.lat, a.lng]));
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    }
+  }, [addresses, map]);
+  return null;
+};
+
 const MapView: React.FC<MapViewProps> = ({ contacts, addresses, types, onContactClick, onMapClick, onAddResident, onCall, t, theme }) => {
   const [mapCenter] = useState<[number, number]>([52.1326, 5.2913]);
   const isDark = theme === 'dark';
@@ -93,6 +112,7 @@ const MapView: React.FC<MapViewProps> = ({ contacts, addresses, types, onContact
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapEvents onMapClick={onMapClick} />
         <MapResizeHandler />
+        <MapBoundsHandler addresses={addressGroups.length > 0 ? addressGroups.map(g => g.address) : addresses} />
         {addressGroups.map(({ address, residents }) => (
           <Marker key={address.id} position={[address.lat, address.lng]} icon={createIcon(address, residents)}>
             <Popup className={`${isDark ? 'dark-popup' : ''}`}>

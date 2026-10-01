@@ -10,7 +10,9 @@ import {
   AlertTriangle, 
   Clock, 
   CheckCircle2, 
-  Phone 
+  Phone,
+  Search,
+  X
 } from 'lucide-react';
 import { Contact, Address, ContactType } from '../types.ts';
 import { cleanPhoneNumber, dialPhoneNumber } from '../utils.ts';
@@ -24,6 +26,10 @@ interface DashboardProps {
   onAddContact: () => void;
   t: (key: any) => string;
   theme?: string;
+  searchQuery?: string;
+  filteredContacts?: Contact[];
+  onViewAllInList?: () => void;
+  onClearSearch?: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -34,9 +40,15 @@ const Dashboard: React.FC<DashboardProps> = ({
   onCall,
   onAddContact, 
   t, 
-  theme 
+  theme,
+  searchQuery = '',
+  filteredContacts,
+  onViewAllInList,
+  onClearSearch
 }) => {
   const isDark = theme === 'dark';
+  const hasActiveSearch = Boolean(searchQuery && searchQuery.trim() !== '');
+  const displayResults = filteredContacts || [];
 
   const upcomingBirthdays = useMemo(() => {
     const today = new Date();
@@ -96,6 +108,116 @@ const Dashboard: React.FC<DashboardProps> = ({
           <h2 className="text-2xl sm:text-3xl font-bold mb-1">{t('welcomeBack')}</h2>
           <p className="text-sm text-gray-500">{t('welcomeSubtitle')}</p>
         </div>
+
+        {/* Search Results on Dashboard */}
+        {hasActiveSearch && (
+          <div className={`p-4 sm:p-6 rounded-3xl border shadow-md space-y-4 animate-in fade-in slide-in-from-top-3 duration-200 ${
+            isDark ? 'bg-slate-900 border-blue-900/40 shadow-blue-950/20' : 'bg-white border-blue-200 shadow-blue-500/5 ring-4 ring-blue-500/5'
+          }`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-500 text-white flex items-center justify-center shrink-0">
+                  <Search size={16} />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold flex items-center gap-2">
+                    <span>{t('searchResults')}</span>
+                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-black ${
+                      isDark ? 'bg-blue-900/60 text-blue-300' : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {displayResults.length}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Zoekopdracht: <span className="font-semibold text-blue-600 dark:text-blue-400">"{searchQuery}"</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {onViewAllInList && displayResults.length > 0 && (
+                  <button
+                    onClick={onViewAllInList}
+                    className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm active:scale-95"
+                  >
+                    {t('viewInList')} ({displayResults.length})
+                  </button>
+                )}
+                {onClearSearch && (
+                  <button
+                    onClick={onClearSearch}
+                    className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition-all active:scale-95 flex items-center gap-1 ${
+                      isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-gray-200 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <X size={13} />
+                    <span>{t('clearSearch')}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {displayResults.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                {displayResults.map(c => {
+                  const addr = addresses.find(a => a.id === c.addressId);
+                  const type = types.find(t_obj => t_obj.id === c.typeId);
+                  const phone = c.phones?.[0];
+                  return (
+                    <div 
+                      key={c.id} 
+                      onClick={() => onContactClick(c.id)}
+                      className={`p-3.5 rounded-2xl border shadow-sm flex items-center gap-3 cursor-pointer group transition-all ${
+                        isDark ? 'bg-slate-950/60 border-slate-800 hover:border-blue-500' : 'bg-gray-50 hover:bg-blue-50/50 border-gray-200/80 hover:border-blue-300'
+                      }`}
+                    >
+                      <img 
+                        src={c.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.firstName)}+${encodeURIComponent(c.lastName || '')}`} 
+                        className="w-12 h-12 rounded-xl object-cover border-2 shrink-0" 
+                        style={{ borderColor: type?.color || '#3b82f6' }} 
+                        alt={`${c.firstName} ${c.lastName || ''}`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 justify-between">
+                          <p className="font-bold text-sm truncate group-hover:text-blue-500 transition-colors">
+                            {c.firstName} {c.lastName || ''}
+                          </p>
+                          {type && (
+                            <span 
+                              className="text-[9px] font-black px-1.5 py-0.5 rounded-md shrink-0"
+                              style={{ backgroundColor: `${type.color}18`, color: type.color }}
+                            >
+                              {type.name}
+                            </span>
+                          )}
+                        </div>
+                        {addr && (
+                          <p className="text-xs text-gray-500 truncate flex items-center gap-1 mt-0.5">
+                            <MapPin size={11} className="shrink-0 text-gray-400" />
+                            {addr.city}{addr.street ? `, ${addr.street}` : ''}
+                          </p>
+                        )}
+                        {phone && (
+                          <p className="text-[11px] text-gray-400 truncate flex items-center gap-1 mt-0.5">
+                            <Phone size={10} className="shrink-0 text-gray-400" />
+                            {phone}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className={`p-8 rounded-2xl border border-dashed text-center text-sm text-gray-400 space-y-1 ${
+                isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-gray-50/80 border-gray-200'
+              }`}>
+                <p className="font-bold">{t('noResultsFound')}</p>
+                <p className="text-xs text-gray-500">Er zijn geen contacten of adressen die overeenkomen met "{searchQuery}".</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">

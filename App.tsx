@@ -11,8 +11,6 @@ import {
   Search, 
   Filter,
   LogOut,
-  ChevronRight,
-  ChevronLeft,
   AlertTriangle,
   CheckCircle2,
   X,
@@ -26,7 +24,8 @@ import {
   Sun,
   Moon,
   Settings,
-  Phone
+  Phone,
+  MapPin
 } from 'lucide-react';
 import { 
   auth, 
@@ -57,6 +56,13 @@ import CalendarView from './components/CalendarView.tsx';
 import AuthScreen from './components/AuthScreen.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { compressImageBase64, removeUndefinedFields, dialPhoneNumber } from './utils.ts';
+import { 
+  SF_DEMO_ADDRESSES, 
+  SF_DEMO_CONTACTS, 
+  SF_DEMO_RELATIONS, 
+  SF_DEMO_EVENTS, 
+  isDemoId 
+} from './demoData.ts';
 
 const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -115,6 +121,26 @@ const App: React.FC = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const [callToast, setCallToast] = useState<{ name: string } | null>(null);
   const lastCallTimeRef = useRef<{ [contactId: string]: number }>({});
+
+  // Search dropdown states and refs
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
 
   // Language persistence effect
   useEffect(() => {
@@ -229,18 +255,34 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   const filteredContacts = useMemo(() => {
-    const q = searchQuery.toLowerCase();
+    const trimmed = searchQuery.trim().toLowerCase();
+    if (!trimmed) return contacts;
+
+    const words = trimmed.split(/\s+/).filter(Boolean);
+
     return contacts.filter(c => {
       if (!c || typeof c.firstName !== 'string') return false;
       const addr = addresses.find(a => a.id === c.addressId);
-      return (
-        c.firstName.toLowerCase().includes(q) ||
-        (c.lastName || '').toLowerCase().includes(q) ||
-        (addr?.city || '').toLowerCase().includes(q) ||
-        (addr?.street || '').toLowerCase().includes(q)
-      );
+      const type = types.find(t => t.id === c.typeId);
+
+      const fullName = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase();
+      const reverseName = `${c.lastName || ''} ${c.firstName || ''}`.toLowerCase();
+      const phonesStr = (c.phones || []).join(' ').toLowerCase();
+      const rawDigits = (c.phones || []).map(p => p.replace(/\D/g, '')).join(' ');
+      const emailsStr = (c.emails || []).join(' ').toLowerCase();
+      const streetStr = `${addr?.street || ''} ${addr?.houseNumber || ''}`.toLowerCase();
+      const cityStr = (addr?.city || '').toLowerCase();
+      const postalStr = (addr?.postalCode || '').toLowerCase();
+      const countryStr = (addr?.country || '').toLowerCase();
+      const notesStr = (c.notes || '').toLowerCase();
+      const typeStr = (type?.name || '').toLowerCase();
+      const hobbiesStr = (c.hobbies || []).join(' ').toLowerCase();
+
+      const combined = `${fullName} ${reverseName} ${phonesStr} ${rawDigits} ${emailsStr} ${streetStr} ${cityStr} ${postalStr} ${countryStr} ${notesStr} ${typeStr} ${hobbiesStr}`;
+
+      return words.every(word => combined.includes(word));
     });
-  }, [contacts, addresses, searchQuery]);
+  }, [contacts, addresses, types, searchQuery]);
 
   const selectedContact = useMemo(() => 
     selectedContactId ? contacts.find(c => c.id === selectedContactId) : null
@@ -638,6 +680,152 @@ const App: React.FC = () => {
     }
   };
 
+  const demoContactsCount = useMemo(() => {
+    return contacts.filter(c => isDemoId(c.id)).length;
+  }, [contacts]);
+
+  const handleLoadDemoData = async () => {
+    if (!currentUser) return;
+    setIsDataSyncing(true);
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      const batch = writeBatch(db);
+
+      for (const addr of SF_DEMO_ADDRESSES) {
+        batch.set(doc(userRef, 'addresses', addr.id), removeUndefinedFields(addr));
+      }
+      for (const contact of SF_DEMO_CONTACTS) {
+        batch.set(doc(userRef, 'contacts', contact.id), removeUndefinedFields(contact));
+      }
+      for (const rel of SF_DEMO_RELATIONS) {
+        batch.set(doc(userRef, 'relations', rel.id), removeUndefinedFields(rel));
+      }
+      for (const ev of SF_DEMO_EVENTS) {
+        batch.set(doc(userRef, 'events', ev.id), removeUndefinedFields(ev));
+      }
+
+      await batch.commit();
+
+      setAddresses(prev => {
+        const existingIds = new Set(prev.map(a => a.id));
+        const toAdd = SF_DEMO_ADDRESSES.filter(a => !existingIds.has(a.id));
+        const updated = prev.map(a => {
+          const demoA = SF_DEMO_ADDRESSES.find(d => d.id === a.id);
+          return demoA || a;
+        });
+        return [...updated, ...toAdd];
+      });
+
+      setContacts(prev => {
+        const existingIds = new Set(prev.map(c => c.id));
+        const toAdd = SF_DEMO_CONTACTS.filter(c => !existingIds.has(c.id));
+        const updated = prev.map(c => {
+          const demoC = SF_DEMO_CONTACTS.find(d => d.id === c.id);
+          return demoC || c;
+        });
+        return [...updated, ...toAdd];
+      });
+
+      setRelations(prev => {
+        const existingIds = new Set(prev.map(r => r.id));
+        const toAdd = SF_DEMO_RELATIONS.filter(r => !existingIds.has(r.id));
+        return [...prev, ...toAdd];
+      });
+
+      setEvents(prev => {
+        const existingIds = new Set(prev.map(e => e.id));
+        const toAdd = SF_DEMO_EVENTS.filter(e => !existingIds.has(e.id));
+        return [...prev, ...toAdd];
+      });
+    } catch (err) {
+      console.error("Error loading demo data:", err);
+      handleFirestoreError(err, 'write', `users/${currentUser.uid} (demo data)`);
+      throw err;
+    } finally {
+      setIsDataSyncing(false);
+    }
+  };
+
+  const handleRemoveDemoData = async () => {
+    if (!currentUser) return;
+    setIsDataSyncing(true);
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      const batch = writeBatch(db);
+
+      const demoContactIds = SF_DEMO_CONTACTS.map(c => c.id);
+      const demoAddressIds = SF_DEMO_ADDRESSES.map(a => a.id);
+      const demoRelationIds = SF_DEMO_RELATIONS.map(r => r.id);
+      const demoEventIds = SF_DEMO_EVENTS.map(e => e.id);
+
+      for (const cid of demoContactIds) {
+        batch.delete(doc(userRef, 'contacts', cid));
+      }
+      for (const aid of demoAddressIds) {
+        batch.delete(doc(userRef, 'addresses', aid));
+      }
+      for (const rid of demoRelationIds) {
+        batch.delete(doc(userRef, 'relations', rid));
+      }
+      for (const eid of demoEventIds) {
+        batch.delete(doc(userRef, 'events', eid));
+      }
+
+      await batch.commit();
+
+      setContacts(prev => prev.filter(c => !isDemoId(c.id)));
+      setAddresses(prev => prev.filter(a => !isDemoId(a.id)));
+      setRelations(prev => prev.filter(r => !isDemoId(r.id)));
+      setEvents(prev => prev.filter(e => !isDemoId(e.id)));
+      if (selectedContactId && isDemoId(selectedContactId)) {
+        setSelectedContactId(null);
+      }
+    } catch (err) {
+      console.error("Error removing demo data:", err);
+      handleFirestoreError(err, 'delete', `users/${currentUser.uid} (demo data)`);
+      throw err;
+    } finally {
+      setIsDataSyncing(false);
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (!currentUser) return;
+    setIsDataSyncing(true);
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+
+      const clearSubcollection = async (sub: string) => {
+        const snap = await getDocs(collection(userRef, sub));
+        if (snap.empty) return;
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += 400) {
+          const chunk = docs.slice(i, i + 400);
+          const batch = writeBatch(db);
+          chunk.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      };
+
+      await clearSubcollection('contacts');
+      await clearSubcollection('addresses');
+      await clearSubcollection('relations');
+      await clearSubcollection('events');
+
+      setContacts([]);
+      setAddresses([]);
+      setRelations([]);
+      setEvents([]);
+      setSelectedContactId(null);
+    } catch (err) {
+      console.error("Error clearing all data:", err);
+      handleFirestoreError(err, 'delete', `users/${currentUser.uid} (clear all)`);
+      throw err;
+    } finally {
+      setIsDataSyncing(false);
+    }
+  };
+
   if (isAuthLoading) {
     return (
       <div className={`h-screen w-full flex items-center justify-center ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-blue-50 text-blue-900'}`}>
@@ -672,14 +860,52 @@ const App: React.FC = () => {
           isSidebarOpen ? 'w-64' : 'w-20'
         } ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'} border-r transition-all duration-300 flex-col z-50 shadow-sm shrink-0`}
       >
-        <div className="p-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg">
-            <Users size={24} />
-          </div>
-          {isSidebarOpen && <h1 className={`text-xl font-bold tracking-tight ${theme === 'dark' ? 'text-blue-400' : 'text-blue-900'}`}>MapCRM75</h1>}
+        {/* Top Header with Brand & Blue Collapse/Expand Button */}
+        <div className={`h-16 px-3.5 flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'} border-b ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'} shrink-0 transition-all`}>
+          {isSidebarOpen ? (
+            <>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md shadow-blue-500/25">
+                  <Users size={22} />
+                </div>
+                <h1 className={`text-xl font-bold tracking-tight truncate ${theme === 'dark' ? 'text-blue-400' : 'text-blue-900'}`}>
+                  MapCRM75
+                </h1>
+              </div>
+              <button 
+                onClick={() => setIsSidebarOpen(false)}
+                title={t('collapseSidebar')}
+                aria-label={t('collapseSidebar')}
+                className="w-8 h-8 rounded-lg bg-blue-50 hover:bg-blue-600 dark:bg-blue-950/70 dark:hover:bg-blue-600 text-blue-600 hover:text-white dark:text-blue-400 dark:hover:text-white border border-blue-200 dark:border-blue-800/80 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm group shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                {/* Beautiful blue arrow/triangle pointing left to collapse */}
+                <svg 
+                  className="w-3.5 h-3.5 fill-blue-600 dark:fill-blue-400 group-hover:fill-white transition-all duration-200 group-hover:-translate-x-0.5" 
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M16 6.2a1 1 0 0 0-1.6-.8l-7 5.8a1.2 1.2 0 0 0 0 1.8l7 5.8a1 1 0 0 0 1.6-.8V6.2z" />
+                </svg>
+              </button>
+            </>
+          ) : (
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              title={t('expandSidebar')}
+              aria-label={t('expandSidebar')}
+              className="w-10 h-10 rounded-xl bg-blue-50 hover:bg-blue-600 dark:bg-blue-950/70 dark:hover:bg-blue-600 text-blue-600 hover:text-white dark:text-blue-400 dark:hover:text-white border border-blue-200 dark:border-blue-800/80 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm group shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              {/* Beautiful blue arrow/triangle pointing right to expand */}
+              <svg 
+                className="w-4 h-4 fill-blue-600 dark:fill-blue-400 group-hover:fill-white transition-all duration-200 group-hover:translate-x-0.5" 
+                viewBox="0 0 24 24"
+              >
+                <path d="M8 6.2a1 1 0 0 1 1.6-.8l7 5.8a1.2 1.2 0 0 1 0 1.8l-7 5.8a1 1 0 0 1-1.6-.8V6.2z" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        <nav className="flex-1 mt-6 px-2 space-y-1 overflow-y-auto">
+        <nav className="flex-1 mt-3 px-2 space-y-1 overflow-y-auto">
           <NavItem 
             icon={<LayoutDashboard size={20} />} 
             label={t('dashboard')} 
@@ -748,30 +974,175 @@ const App: React.FC = () => {
             theme={theme}
           />
         </div>
-
-        <div className="p-4">
-          <button 
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className={`w-full flex items-center justify-center p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-gray-100 text-gray-500'}`}
-          >
-            {isSidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
-          </button>
-        </div>
       </aside>
 
       <main className="flex-1 flex flex-col relative min-w-0 min-h-0 overflow-hidden w-full">
         <header className={`${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'} h-16 border-b flex items-center justify-between px-3 sm:px-4 lg:px-6 z-40 shrink-0 gap-2 w-full min-w-0`}>
-          <div className="flex-1 min-w-0 max-w-xl flex items-center gap-2 sm:gap-4">
+          <div ref={searchContainerRef} className="flex-1 min-w-0 max-w-xs sm:max-w-sm flex items-center gap-2 sm:gap-4 relative">
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input 
+                ref={searchInputRef}
                 type="text" 
                 placeholder={t('search')} 
-                className={`w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border-none rounded-full focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm transition-all ${theme === 'dark' ? 'bg-slate-800 text-slate-100 placeholder:text-slate-500' : 'bg-gray-100 text-black placeholder:text-gray-400'}`}
+                className={`w-full pl-9 sm:pl-10 pr-8 sm:pr-9 py-2 border-none rounded-full focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm transition-all ${theme === 'dark' ? 'bg-slate-800 text-slate-100 placeholder:text-slate-500' : 'bg-gray-100 text-black placeholder:text-gray-400'}`}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsSearchDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  if (searchQuery.trim()) {
+                    setIsSearchDropdownOpen(true);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (filteredContacts.length > 0) {
+                      setViewMode('list');
+                      setIsSearchDropdownOpen(false);
+                    }
+                  } else if (e.key === 'Escape') {
+                    setIsSearchDropdownOpen(false);
+                  }
+                }}
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIsSearchDropdownOpen(false);
+                    searchInputRef.current?.focus();
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 transition-colors"
+                  title={t('clearSearch')}
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
+
+            {/* Live Search Results Dropdown */}
+            {isSearchDropdownOpen && searchQuery.trim() !== '' && (
+              <div 
+                className={`absolute top-full left-0 mt-2 w-80 sm:w-96 rounded-2xl shadow-2xl border z-50 overflow-hidden ${
+                  theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-gray-200 text-gray-900'
+                } animate-in fade-in slide-in-from-top-2 duration-150`}
+              >
+                <div className={`px-4 py-2.5 border-b flex items-center justify-between text-xs font-semibold ${
+                  theme === 'dark' ? 'border-slate-800 bg-slate-900/80 text-slate-400' : 'border-gray-100 bg-gray-50/80 text-gray-500'
+                }`}>
+                  <span>{t('searchResults')} ({filteredContacts.length})</span>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setIsSearchDropdownOpen(false);
+                    }}
+                    className="text-[11px] text-blue-500 hover:underline"
+                  >
+                    {t('clearSearch')}
+                  </button>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800">
+                  {filteredContacts.length > 0 ? (
+                    filteredContacts.slice(0, 6).map((contact) => {
+                      const addr = addresses.find(a => a.id === contact.addressId);
+                      const type = types.find(t_item => t_item.id === contact.typeId);
+                      const photo = contact.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.firstName)}+${encodeURIComponent(contact.lastName || '')}`;
+                      const phone = contact.phones?.[0];
+
+                      return (
+                        <div
+                          key={contact.id}
+                          onClick={() => {
+                            setSelectedContactId(contact.id);
+                            setIsSearchDropdownOpen(false);
+                          }}
+                          className={`p-3 flex items-center gap-3 cursor-pointer transition-colors ${
+                            theme === 'dark' ? 'hover:bg-slate-800/70' : 'hover:bg-blue-50/60'
+                          }`}
+                        >
+                          <img 
+                            src={photo} 
+                            alt={`${contact.firstName} ${contact.lastName || ''}`}
+                            className="w-10 h-10 rounded-xl object-cover shrink-0 border"
+                            style={{ borderColor: type?.color || '#3b82f6' }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 justify-between">
+                              <span className="font-bold text-sm truncate">
+                                {contact.firstName} {contact.lastName || ''}
+                              </span>
+                              {type && (
+                                <span 
+                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: `${type.color}20`, color: type.color }}
+                                >
+                                  {type.name}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-gray-500 truncate mt-0.5">
+                              {addr && (
+                                <span className="flex items-center gap-1 truncate">
+                                  <MapPin size={11} className="shrink-0" />
+                                  {addr.city}{addr.street ? `, ${addr.street}` : ''}
+                                </span>
+                              )}
+                              {phone && (
+                                <span className="flex items-center gap-1 truncate text-gray-400">
+                                  <Phone size={10} className="shrink-0" />
+                                  {phone}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-6 text-center text-sm text-gray-400">
+                      <p className="font-medium">{t('noResultsFound')}</p>
+                      <p className="text-xs text-gray-500 mt-1">"{searchQuery}"</p>
+                    </div>
+                  )}
+                </div>
+
+                {filteredContacts.length > 0 && (
+                  <div className={`p-2 border-t flex items-center justify-between gap-2 text-xs ${
+                    theme === 'dark' ? 'border-slate-800 bg-slate-900/50' : 'border-gray-100 bg-gray-50/50'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setViewMode('list');
+                        setIsSearchDropdownOpen(false);
+                      }}
+                      className="flex-1 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-center transition-colors"
+                    >
+                      {t('viewInList')} ({filteredContacts.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setViewMode('map');
+                        setIsSearchDropdownOpen(false);
+                      }}
+                      className={`py-1.5 px-3 rounded-lg border font-medium transition-colors ${
+                        theme === 'dark' ? 'border-slate-700 hover:bg-slate-800 text-slate-200' : 'border-gray-200 hover:bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {t('viewOnMap')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {isDataSyncing && (
               <div className="flex items-center gap-1 sm:gap-2 text-[10px] font-black text-blue-500 uppercase tracking-widest animate-pulse shrink-0">
                 <Loader2 size={12} className="animate-spin" />
@@ -808,11 +1179,11 @@ const App: React.FC = () => {
 
             <button 
               onClick={() => setIsEventFormOpen(true)}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 sm:px-3.5 py-2 rounded-full font-bold text-xs sm:text-sm transition-all shadow-md active:scale-95 shrink-0"
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 sm:px-4 md:px-5 py-2 rounded-full font-bold text-xs sm:text-sm transition-all shadow-md active:scale-95 shrink-0"
               title={t('newEvent')}
             >
-              <Calendar size={16} />
-              <span className="hidden xl:inline">{t('newEvent')}</span>
+              <Calendar size={16} className="shrink-0" />
+              <span>{t('group')}</span>
             </button>
 
             <button 
@@ -904,6 +1275,10 @@ const App: React.FC = () => {
                   onAddContact={() => handleAddContact()}
                   t={t}
                   theme={theme}
+                  searchQuery={searchQuery}
+                  filteredContacts={filteredContacts}
+                  onViewAllInList={() => setViewMode('list')}
+                  onClearSearch={() => setSearchQuery('')}
                 />
               )}
               {viewMode === 'calendar' && (
@@ -963,6 +1338,11 @@ const App: React.FC = () => {
                   onImportClick={() => fileInputRef.current?.click()}
                   onLogout={handleLogout}
                   t={t}
+                  onLoadDemoData={handleLoadDemoData}
+                  onRemoveDemoData={handleRemoveDemoData}
+                  onClearAllData={handleClearAllData}
+                  demoContactsCount={demoContactsCount}
+                  onNavigateToMap={() => setViewMode('map')}
                 />
               )}
 
